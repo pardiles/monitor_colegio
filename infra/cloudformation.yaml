@@ -1,0 +1,189 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Monitor Colegio - EC2 que se prende 2 veces al dia, ejecuta y se apaga
+
+Parameters:
+  KeyPairName:
+    Type: String
+    Default: monitor-colegio-key
+    Description: Nombre del key pair para SSH
+
+Resources:
+
+  # Security Group - solo SSH
+  MonitorSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Monitor Colegio - SSH access
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+  # IAM Role para que la EC2 pueda apagarse sola
+  MonitorInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: monitor-colegio-ec2-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SelfShutdown
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:StopInstances
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    ec2:ResourceTag/Name: monitor-colegio
+
+  MonitorInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref MonitorInstanceRole
+
+  # EC2 Instance
+  MonitorInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.micro
+      ImageId: ami-03499a87bbb39a09a  # Amazon Linux 2023 us-east-2 (latest)
+      KeyName: !Ref KeyPairName
+      IamInstanceProfile: !Ref MonitorInstanceProfile
+      SecurityGroupIds:
+        - !GetAtt MonitorSecurityGroup.GroupId
+      Tags:
+        - Key: Name
+          Value: monitor-colegio
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          # Setup inicial (solo la primera vez)
+          yum update -y
+          yum install -y python3.11 python3.11-pip nodejs20 git chromium
+          
+          # Crear directorio del proyecto
+          mkdir -p /opt/monitor-colegio
+          
+          # Script que se ejecuta al iniciar la instancia
+          cat > /opt/monitor-colegio/run.sh << 'EOF'
+          #!/bin/bash
+          cd /opt/monitor-colegio
+          
+          # Determinar si es AM o PM
+          HOUR=$(TZ='America/Santiago' date +%H)
+          if [ "$HOUR" -lt 12 ]; then
+            MODE="morning"
+          else
+            MODE="evening"
+          fi
+          
+          echo "$(date) - Ejecutando modo: $MODE"
+          
+          # 1. Leer WhatsApp
+          node fetch_whatsapp.js daily 2>&1 | tee -a /var/log/monitor-colegio.log
+          
+          # 2. Ejecutar ingesta + resumen + envio
+          python3.11 main.py $MODE 2>&1 | tee -a /var/log/monitor-colegio.log
+          
+          echo "$(date) - Finalizado. Apagando instancia..."
+          
+          # 3. Apagar la instancia
+          INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+          aws ec2 stop-instances --instance-ids $INSTANCE_ID --region us-east-2
+          EOF
+          
+          chmod +x /opt/monitor-colegio/run.sh
+          
+          # Configurar para que ejecute al boot
+          cat > /etc/systemd/system/monitor-colegio.service << 'EOF'
+          [Unit]
+          Description=Monitor Colegio
+          After=network-online.target
+          Wants=network-online.target
+          
+          [Service]
+          Type=oneshot
+          ExecStart=/opt/monitor-colegio/run.sh
+          WorkingDirectory=/opt/monitor-colegio
+          
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+          
+          systemctl enable monitor-colegio.service
+
+  # EventBridge Rule - Prender a las 5:50 AM Chile (8:50 UTC en invierno, 9:50 UTC en verano)
+  # Chile es UTC-4 en invierno, UTC-3 en verano
+  # Usamos 9:50 UTC = 5:50 AM Chile (horario invierno julio)
+  MorningStartRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: monitor-colegio-morning-start
+      Description: Prende EC2 a las 5:50 AM Chile/Santiago
+      ScheduleExpression: cron(50 9 * * ? *)
+      State: ENABLED
+      Targets:
+        - Id: StartEC2Morning
+          Arn: !Sub arn:aws:ssm:${AWS::Region}::automation-definition/AWS-StartEC2Instance
+          RoleArn: !GetAtt EventBridgeRole.Arn
+          Input: !Sub '{"InstanceId":["${MonitorInstance}"]}'
+
+  # EventBridge Rule - Prender a las 5:50 PM Chile (21:50 UTC invierno)
+  EveningStartRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: monitor-colegio-evening-start
+      Description: Prende EC2 a las 5:50 PM Chile/Santiago
+      ScheduleExpression: cron(50 21 * * ? *)
+      State: ENABLED
+      Targets:
+        - Id: StartEC2Evening
+          Arn: !Sub arn:aws:ssm:${AWS::Region}::automation-definition/AWS-StartEC2Instance
+          RoleArn: !GetAtt EventBridgeRole.Arn
+          Input: !Sub '{"InstanceId":["${MonitorInstance}"]}'
+
+  # IAM Role para EventBridge
+  EventBridgeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: monitor-colegio-eventbridge-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: StartStopEC2
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:StartAutomationExecution
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ec2:StartInstances
+                  - ec2:StopInstances
+                  - ec2:DescribeInstances
+                Resource: '*'
+
+Outputs:
+  InstanceId:
+    Value: !Ref MonitorInstance
+    Description: ID de la instancia EC2
+  PublicIP:
+    Value: !GetAtt MonitorInstance.PublicIp
+    Description: IP publica para SSH

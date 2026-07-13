@@ -1,0 +1,57 @@
+{
+  "franco_5A": {
+    "lunes": {
+      "ramos": ["Matemáticas", "Lenguaje", "Ciencias", "Ed. Física", "Inglés"],
+      "hora_salida": "16:30",
+      "extraprogramatica": {"nombre": "Ajedrez", "horario": "16:30-17:30", "hora_salida_real": "17:30"}
+    },
+    "martes": {
+      "ramos": ["Historia", "Matemáticas", "Lenguaje", "Tecnología", "Música"],
+      "hora_salida": "16:30",
+      "extraprogramatica": null
+    },
+    "miercoles": {
+      "ramos": ["Inglés", "Ciencias", "Matemáticas", "Arte"],
+      "hora_salida": "15:30",
+      "extraprogramatica": null
+    },
+    "jueves": {
+      "ramos": ["Lenguaje", "Historia", "Matemáticas", "Ciencias", "Ed. Física"],
+      "hora_salida": "16:30",
+      "extraprogramatica": null
+    },
+    "viernes": {
+      "ramos": ["Matemáticas", "Inglés", "Lenguaje", "Orientación"],
+      "hora_salida": "15:30",
+      "extraprogramatica": null
+    }
+  },
+  "blanca_1C": {
+    "lunes": {
+      "ramos": ["Lenguaje", "Matemáticas", "Ciencias", "Arte"],
+      "hora_salida": "15:30",
+      "extraprogramatica": {"nombre": "Escalada I", "horario": "16:15-17:30", "hora_salida_real": "17:30"}
+    },
+    "martes": {
+      "ramos": ["Matemáticas", "Lenguaje", "Historia", "Ed. Física"],
+      "hora_salida": "15:30",
+      "extraprogramatica": null
+    },
+    "miercoles": {
+      "ramos": ["Lenguaje", "Matemáticas", "Inglés", "Música"],
+      "hora_salida": "13:20",
+      "extraprogramatica": {"nombre": "Mini chef II", "horario": "13:20-15:15", "hora_salida_real": "15:15"}
+    },
+    "jueves": {
+      "ramos": ["Matemáticas", "Lenguaje", "Ciencias", "Tecnología"],
+      "hora_salida": "15:30",
+      "extraprogramatica": null
+    },
+    "viernes": {
+      "ramos": ["Lenguaje", "Inglés", "Ed. Física", "Orientación"],
+      "hora_salida": "15:30",
+      "extraprogramatica": {"nombre": "Polideportivo 1° y 2° básico", "horario": "15:35-16:55", "hora_salida_real": "16:55"}
+    }
+  },
+  "nota": "Horarios aproximados - actualizar con los reales del colegio"
+}

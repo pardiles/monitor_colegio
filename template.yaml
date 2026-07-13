@@ -1,0 +1,260 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Monitor Colegio - Asistente WhatsApp para seguimiento escolar
+  Lambda 1: Ingesta diaria de datos (5:00 AM Chile / 9:00 AM UTC)
+  Lambda 2: Resumen y envío WhatsApp (6:30 AM Chile / 10:30 AM UTC)
+
+Globals:
+  Function:
+    Timeout: 300          # 5 minutos máximo por función
+    MemorySize: 1024
+    Environment:
+      Variables:
+        SCHOOLNET_USERNAME: !Ref SchoolnetUsername
+        SCHOOLNET_PASSWORD: !Ref SchoolnetPassword
+        SCHOOL_CALENDAR_URL: !Ref SchoolCalendarUrl
+        SCHOOL_NEWS_URL: !Ref SchoolNewsUrl
+        SCHOOL_CATEGORIES: !Ref SchoolCategories
+        CHILD_1_NAME: !Ref Child1Name
+        CHILD_1_COURSE: !Ref Child1Course
+        CHILD_1_ALUMNO_IDX: !Ref Child1AlumnoIdx
+        CHILD_2_NAME: !Ref Child2Name
+        CHILD_2_COURSE: !Ref Child2Course
+        CHILD_2_ALUMNO_IDX: !Ref Child2AlumnoIdx
+        S3_BUCKET: !Ref DataBucket
+        GMAIL_TOKEN_JSON: !Ref GmailTokenJson
+        WA_GROUP_1_ID: !Ref WhatsAppGroup1Id
+        WA_GROUP_2_ID: !Ref WhatsAppGroup2Id
+
+Parameters:
+  # --- Credenciales SchoolNet ---
+  SchoolnetUsername:
+    Type: String
+    Description: Usuario de SchoolNet
+  SchoolnetPassword:
+    Type: String
+    Description: Contraseña de SchoolNet
+    NoEcho: true
+
+  # --- URLs del colegio ---
+  SchoolCalendarUrl:
+    Type: String
+    Default: https://colegiodelsagradocorazon.cl/evaluation/calendar.json
+  SchoolNewsUrl:
+    Type: String
+    Default: https://colegiodelsagradocorazon.cl/noticias
+  SchoolCategories:
+    Type: String
+    Default: "5,1"
+
+  # --- Datos de los alumnos ---
+  Child1Name:
+    Type: String
+    Default: Franco
+  Child1Course:
+    Type: String
+    Default: 5-A
+  Child1AlumnoIdx:
+    Type: String
+    Default: "0"
+  Child2Name:
+    Type: String
+    Default: Blanca
+  Child2Course:
+    Type: String
+    Default: 1-C
+  Child2AlumnoIdx:
+    Type: String
+    Default: "1"
+
+  # --- OpenAI ---
+  OpenAIApiKey:
+    Type: String
+    NoEcho: true
+    Description: API Key de OpenAI
+
+  # --- Twilio WhatsApp ---
+  TwilioAccountSid:
+    Type: String
+    NoEcho: true
+  TwilioAuthToken:
+    Type: String
+    NoEcho: true
+  TwilioWhatsAppFrom:
+    Type: String
+    Default: whatsapp:+14155238886
+  MyWhatsAppNumber:
+    Type: String
+    Description: "Número de destino, ej: whatsapp:+56912345678"
+
+  # --- Gmail OAuth token (base64 encoded) ---
+  GmailTokenJson:
+    Type: String
+    NoEcho: true
+    Description: Contenido de token.json en base64
+
+  # --- WhatsApp Groups ---
+  WhatsAppGroup1Id:
+    Type: String
+    Default: "120363407876876956@g.us"
+    Description: "ID grupo 1C SCA - Blanca"
+  WhatsAppGroup2Id:
+    Type: String
+    Default: "120363022899821958@g.us"
+    Description: "ID grupo 5A - Franco"
+
+Resources:
+
+  # ─── S3 Bucket para almacenar datos diarios ───────────────────────────────
+  DataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "monitor-colegio-data-${AWS::AccountId}"
+      LifecycleConfiguration:
+        Rules:
+          - Id: EliminarDatosAntiguos
+            Status: Enabled
+            ExpirationInDays: 90  # Conservar 90 días de histórico
+      Tags:
+        - Key: Project
+          Value: MonitorColegio
+
+  # ─── IAM Role para Lambda Ingesta ─────────────────────────────────────────
+  IngestaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3WritePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt DataBucket.Arn
+                  - !Sub "${DataBucket.Arn}/*"
+
+  # ─── IAM Role para Lambda Resumen ─────────────────────────────────────────
+  ResumenRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3ReadPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt DataBucket.Arn
+                  - !Sub "${DataBucket.Arn}/*"
+
+  # ─── Lambda 1: Ingesta ────────────────────────────────────────────────────
+  IngestaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: monitor-colegio-ingesta
+      PackageType: Image
+      ImageUri: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/monitor-colegio-ingesta:latest"
+      Role: !GetAtt IngestaRole.Arn
+      Timeout: 600   # 10 minutos para recolectar todas las fuentes
+      MemorySize: 2048
+      Environment:
+        Variables:
+          SCHOOLNET_USERNAME: !Ref SchoolnetUsername
+          SCHOOLNET_PASSWORD: !Ref SchoolnetPassword
+          SCHOOL_CALENDAR_URL: !Ref SchoolCalendarUrl
+          SCHOOL_NEWS_URL: !Ref SchoolNewsUrl
+          SCHOOL_CATEGORIES: !Ref SchoolCategories
+          CHILD_1_NAME: !Ref Child1Name
+          CHILD_1_COURSE: !Ref Child1Course
+          CHILD_1_ALUMNO_IDX: !Ref Child1AlumnoIdx
+          CHILD_2_NAME: !Ref Child2Name
+          CHILD_2_COURSE: !Ref Child2Course
+          CHILD_2_ALUMNO_IDX: !Ref Child2AlumnoIdx
+          S3_BUCKET: !Ref DataBucket
+          GMAIL_TOKEN_JSON: !Ref GmailTokenJson
+          WA_GROUP_1_ID: !Ref WhatsAppGroup1Id
+          WA_GROUP_2_ID: !Ref WhatsAppGroup2Id
+      Events:
+        ScheduleIngesta:
+          Type: Schedule
+          Properties:
+            Name: monitor-colegio-ingesta-schedule
+            # 5:00 AM Chile (UTC-4) = 9:00 AM UTC
+            Schedule: cron(0 9 * * ? *)
+            Description: "Recolección diaria de datos escolares - 5:00 AM Chile"
+            Enabled: true
+      Tags:
+        Project: MonitorColegio
+
+  # ─── Lambda 2: Resumen ────────────────────────────────────────────────────
+  ResumenFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: monitor-colegio-resumen
+      PackageType: Image
+      ImageUri: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/monitor-colegio-resumen:latest"
+      Role: !GetAtt ResumenRole.Arn
+      Timeout: 120
+      MemorySize: 512
+      Environment:
+        Variables:
+          S3_BUCKET: !Ref DataBucket
+          OPENAI_API_KEY: !Ref OpenAIApiKey
+          TWILIO_ACCOUNT_SID: !Ref TwilioAccountSid
+          TWILIO_AUTH_TOKEN: !Ref TwilioAuthToken
+          TWILIO_WHATSAPP_FROM: !Ref TwilioWhatsAppFrom
+          MY_WHATSAPP_NUMBER: !Ref MyWhatsAppNumber
+          CHILD_1_NAME: !Ref Child1Name
+          CHILD_1_COURSE: !Ref Child1Course
+          CHILD_2_NAME: !Ref Child2Name
+          CHILD_2_COURSE: !Ref Child2Course
+      Events:
+        ScheduleResumen:
+          Type: Schedule
+          Properties:
+            Name: monitor-colegio-resumen-schedule
+            # 6:30 AM Chile (UTC-4) = 10:30 AM UTC
+            Schedule: cron(30 10 * * ? *)
+            Description: "Envío de resumen diario WhatsApp - 6:30 AM Chile"
+            Enabled: true
+      Tags:
+        Project: MonitorColegio
+
+Outputs:
+  DataBucketName:
+    Description: "Bucket S3 con datos diarios"
+    Value: !Ref DataBucket
+
+  IngestaFunctionArn:
+    Description: "ARN Lambda Ingesta"
+    Value: !GetAtt IngestaFunction.Arn
+
+  ResumenFunctionArn:
+    Description: "ARN Lambda Resumen"
+    Value: !GetAtt ResumenFunction.Arn
