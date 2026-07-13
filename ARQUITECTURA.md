@@ -84,8 +84,8 @@ Se ejecuta 2 veces al día para capturar info nueva.
 4. **Noticias web** (Scrapling HTTP)
    - Últimas noticias publicadas
 
-5. **WhatsApp grupos** (whatsapp-web.js)
-   - Mensajes nuevos de los 2 grupos
+5. **WhatsApp grupos** (Baileys)
+   - Mensajes nuevos de los 3 grupos (última semana)
 
 ### Lambda 2: Resumen + Envío (7:00 AM y 20:00)
 1. Lee datos del día desde S3
