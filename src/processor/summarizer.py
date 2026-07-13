@@ -179,7 +179,7 @@ Genera el briefing matutino."""
         if is_weekly:
             context = "\nIMPORTANTE: Es el RESUMEN SEMANAL (domingo PM). Incluye el panorama completo de TODA la semana que viene día por día: ramos, pruebas, actividades, extraprogramáticas, horarios de salida, entrevistas y todo lo relevante para ambos hijos."
         else:
-            context = "\nEs un mensaje DIARIO. Incluir: comunicaciones nuevas del día, resumen de WhatsApp si hay algo relevante, ramos y hora de salida de MAÑANA. Si no hay novedades del día, solo indicar los ramos de mañana."
+            context = "\nEs un mensaje DIARIO PM. Solo incluir: novedades/comunicaciones que llegaron HOY, resumen de WhatsApp relevante de HOY, y preparación para MAÑANA (ramos, hora salida, pruebas, extraprogramáticas, actividades). NO incluir info del día actual que ya pasó (clases, horarios de hoy). El foco es: qué pasó hoy de nuevo + qué viene mañana."
         
         user_content = f"""Fecha de hoy: {today.strftime('%A %d de %B de %Y')}{context}
 
