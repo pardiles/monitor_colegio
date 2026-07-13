@@ -29,6 +29,17 @@ REGLA HORA DE SALIDA:
 - Si hay semana especial/alianzas/evento y dice "sin extraprogramáticas": usar hora de salida del colegio ese día
 - Si el SC Info o comunicaciones indican salida anticipada, usar esa hora
 - SIEMPRE priorizar la info del SC Info sobre los horarios normales
+- Franco está citado al Playback (si el SC Info menciona horario especial para Playback, aplicar a Franco)
+
+REGLA SOBRE INFORMACIÓN DEL SC INFO:
+- TODA la info relevante del SC Info debe incluirse en el resumen
+- Avisos sobre preinscripciones de extraprogramáticas, cambios de personal, actividades deportivas, etc.
+- Si hay info de horarios especiales para citados a actividades (Playback, baile, etc.), incluirla como aviso
+- No omitir nada que pueda ser accionable para los apoderados
+- Incluir noticias que apliquen a los ciclos de los hijos:
+  - Franco (5°A): Ciclo Básico (3° a 5°), noticias generales "A toda la comunidad"
+  - Blanca (1°C): Ciclo Inicial (PK a 2°), noticias generales "A toda la comunidad"
+- Cambios de personal, nuevos encargados, contactos: SIEMPRE incluir (nombre + email si hay)
 """
 
 MORNING_SYSTEM_PROMPT = f"""Eres un asistente que genera briefings matutinos para un apoderado.
