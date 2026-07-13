@@ -43,6 +43,9 @@ REGLA SOBRE INFORMACIÓN DEL SC INFO:
   - Franco (5°A): Ciclo Básico (3° a 5°), noticias generales "A toda la comunidad"
   - Blanca (1°C): Ciclo Inicial (PK a 2°), noticias generales "A toda la comunidad"
 - Cambios de personal, nuevos encargados, contactos: SIEMPRE incluir (nombre + email si hay)
+- Preinscripciones y plazos (extraprogramáticas, talleres): SIEMPRE incluir con fecha de inicio
+- Reuniones comunitarias (Bicis con Amor, Centro de Padres, voluntariados): SIEMPRE incluir si tienen fecha en los próximos 7 días
+- Retiros, charlas, eventos para apoderados: SIEMPRE incluir con fecha, hora y lugar
 """
 
 MORNING_SYSTEM_PROMPT = f"""Eres un asistente que genera briefings matutinos para un apoderado.
