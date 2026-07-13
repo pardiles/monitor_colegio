@@ -13,9 +13,12 @@ import os
 import sys
 import json
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 
 load_dotenv()
+
+CHILE_TZ = ZoneInfo("America/Santiago")
 
 from src.sources.calendario import fetch_evaluaciones
 from src.sources.schoolnet import SchoolNetClient
@@ -225,7 +228,7 @@ def main():
         data.update(_load_whatsapp())
         
         # Determinar si es resumen semanal (domingo PM)
-        today = datetime.now()
+        today = datetime.now(CHILE_TZ)
         is_weekly = (today.weekday() == 6 and mode == "evening")  # Domingo PM
         
         if is_weekly:

@@ -4,7 +4,10 @@ Procesador: Genera resúmenes diarios con Claude Haiku.
 
 import anthropic
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Dict, Any
+
+CHILE_TZ = ZoneInfo("America/Santiago")
 
 CONTEXT = """
 Hijos:
@@ -142,7 +145,7 @@ class Summarizer:
 
     def generate_morning_briefing(self, data: Dict[str, Any], is_weekly: bool = False) -> str:
         """Genera el briefing matutino."""
-        today = datetime.now()
+        today = datetime.now(CHILE_TZ)
         
         context = ""
         if is_weekly:
@@ -167,7 +170,7 @@ Genera el briefing matutino."""
 
     def generate_evening_summary(self, data: Dict[str, Any], is_weekly: bool = False) -> str:
         """Genera el resumen nocturno."""
-        today = datetime.now()
+        today = datetime.now(CHILE_TZ)
         
         context = ""
         if is_weekly:
