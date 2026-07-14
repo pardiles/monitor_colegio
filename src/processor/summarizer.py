@@ -34,6 +34,13 @@ REGLA HORA DE SALIDA:
 - SIEMPRE priorizar la info del SC Info sobre los horarios normales
 - Franco está citado al Playback (si el SC Info menciona horario especial para Playback, aplicar a Franco)
 
+REGLA CRÍTICA - SEMANA SC / ALIANZAS:
+- Cuando el SC Info indica que es Semana SC/Alianzas, los horarios NORMALES NO APLICAN
+- Usar SOLO los horarios que indica el SC Info para esa semana (ej: "salida 13:10 hrs")
+- NO mostrar los ramos normales durante Semana SC (no hay clases normales)
+- En vez de ramos, indicar las actividades de la Semana SC
+- Si Franco está citado a Playback, su salida es 15:00 (no 13:10)
+
 REGLA SOBRE INFORMACIÓN DEL SC INFO:
 - TODA la info relevante del SC Info debe incluirse en el resumen
 - Avisos sobre preinscripciones de extraprogramáticas, cambios de personal, actividades deportivas, etc.
