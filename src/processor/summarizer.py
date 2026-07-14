@@ -32,14 +32,14 @@ REGLA HORA DE SALIDA:
 - Si hay semana especial/alianzas/evento y dice "sin extraprogramáticas": usar hora de salida del colegio ese día
 - Si el SC Info o comunicaciones indican salida anticipada, usar esa hora
 - SIEMPRE priorizar la info del SC Info sobre los horarios normales
-- Franco está citado al Playback (si el SC Info menciona horario especial para Playback, aplicar a Franco)
+- Horarios especiales (Playback, ensayos, etc.) solo aplican para el día ESPECÍFICO que indica el SC Info
 
 REGLA CRÍTICA - SEMANA SC / ALIANZAS:
 - Cuando el SC Info indica que es Semana SC/Alianzas, los horarios NORMALES NO APLICAN
 - Usar SOLO los horarios que indica el SC Info para esa semana (ej: "salida 13:10 hrs")
 - NO mostrar los ramos normales durante Semana SC (no hay clases normales)
 - En vez de ramos, indicar las actividades de la Semana SC
-- Si Franco está citado a Playback, su salida es 15:00 (no 13:10)
+- Solo aplicar horarios especiales (Playback, etc.) para los días ESPECÍFICOS que menciona el SC Info, no para toda la semana
 
 REGLA SOBRE INFORMACIÓN DEL SC INFO:
 - TODA la info relevante del SC Info debe incluirse en el resumen
@@ -151,7 +151,7 @@ class Summarizer:
 
     def __init__(self, api_key: str):
         self.client = anthropic.Anthropic(api_key=api_key)
-        self.model = "claude-haiku-4-5-20251001"
+        self.model = "claude-sonnet-4-6"
 
     def generate_morning_briefing(self, data: Dict[str, Any], is_weekly: bool = False) -> str:
         """Genera el briefing matutino."""
@@ -204,14 +204,24 @@ Genera el resumen nocturno."""
         return response.content[0].text
 
     def _format_data(self, data: Dict[str, Any]) -> str:
-        """Formatea los datos para el prompt."""
+        """Formatea los datos para el prompt. SC Info va PRIMERO como fuente principal."""
         import json
         sections = []
         high_limit_keys = ("scinfo", "emails", "whatsapp_5A_franco", 
                           "whatsapp_1C_blanca", "whatsapp_sharks_franco")
+        
+        # SC Info va PRIMERO con encabezado de prioridad máxima
+        if "scinfo" in data and data["scinfo"]:
+            scinfo_str = json.dumps(data["scinfo"], indent=2, ensure_ascii=False)[:5000]
+            sections.append(f"### ⚠️ SC INFO (FUENTE PRINCIPAL - HORARIOS Y ACTIVIDADES DE ESTA SEMANA. PREVALECE SOBRE horarios.json)\n{scinfo_str}")
+        
+        # Resto de datos
         for key, value in data.items():
-            if value:
+            if value and key != "scinfo":
                 limit = 4000 if key in high_limit_keys else 2000
                 value_str = json.dumps(value, indent=2, ensure_ascii=False)[:limit]
-                sections.append(f"### {key}\n{value_str}")
+                if key == "horarios":
+                    sections.append(f"### {key} (SOLO usar si NO hay info en SC Info para ese día)\n{value_str}")
+                else:
+                    sections.append(f"### {key}\n{value_str}")
         return "\n\n".join(sections)
