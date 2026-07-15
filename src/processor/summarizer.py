@@ -53,6 +53,13 @@ REGLA SOBRE INFORMACIÓN DEL SC INFO:
 - Preinscripciones y plazos (extraprogramáticas, talleres): SIEMPRE incluir con fecha de inicio
 - Reuniones comunitarias (Bicis con Amor, Centro de Padres, voluntariados): SIEMPRE incluir si tienen fecha en los próximos 7 días
 - Retiros, charlas, eventos para apoderados: SIEMPRE incluir con fecha, hora y lugar
+
+REGLA SOBRE INSTRUCCIONES DE LOS PADRES (instrucciones_padres):
+- Son mensajes escritos por los padres en el grupo "Monitor Colegio"
+- Tienen MÁXIMA PRIORIDAD — son cambios o aclaraciones manuales
+- Ejemplos: "Franco no va al ajedrez esta semana", "Blanca tiene cumpleaños viernes 17:00"
+- Si contradicen otra fuente, las instrucciones de los padres GANAN
+- Incluir en el resumen como información confirmada
 """
 
 MORNING_SYSTEM_PROMPT = f"""Eres un asistente que genera briefings matutinos para un apoderado.
@@ -204,24 +211,41 @@ Genera el resumen nocturno."""
         return response.content[0].text
 
     def _format_data(self, data: Dict[str, Any]) -> str:
-        """Formatea los datos para el prompt. SC Info va PRIMERO como fuente principal."""
+        """Formatea los datos para el prompt. Orden de prioridad:
+        1. Instrucciones padres (grupo Monitor Colegio) - MÁXIMA
+        2. Emails del colegio
+        3. SC Info
+        4. Resto (calendario, horarios, WhatsApp grupos, etc.)
+        """
         import json
         sections = []
         high_limit_keys = ("scinfo", "emails", "whatsapp_5A_franco", 
-                          "whatsapp_1C_blanca", "whatsapp_sharks_franco")
+                          "whatsapp_1C_blanca", "whatsapp_sharks_franco",
+                          "instrucciones_padres")
         
-        # SC Info va PRIMERO con encabezado de prioridad máxima
+        # 1. INSTRUCCIONES PADRES (máxima prioridad)
+        if "instrucciones_padres" in data and data["instrucciones_padres"]:
+            val = json.dumps(data["instrucciones_padres"], indent=2, ensure_ascii=False)[:4000]
+            sections.append(f"### ⚠️🔴 INSTRUCCIONES DE LOS PADRES (PRIORIDAD MÁXIMA - PREVALECE SOBRE TODO)\n{val}")
+        
+        # 2. EMAILS
+        if "emails" in data and data["emails"]:
+            val = json.dumps(data["emails"], indent=2, ensure_ascii=False)[:4000]
+            sections.append(f"### 📧 EMAILS DEL COLEGIO (2da prioridad)\n{val}")
+        
+        # 3. SC INFO
         if "scinfo" in data and data["scinfo"]:
-            scinfo_str = json.dumps(data["scinfo"], indent=2, ensure_ascii=False)[:5000]
-            sections.append(f"### ⚠️ SC INFO (FUENTE PRINCIPAL - HORARIOS Y ACTIVIDADES DE ESTA SEMANA. PREVALECE SOBRE horarios.json)\n{scinfo_str}")
+            val = json.dumps(data["scinfo"], indent=2, ensure_ascii=False)[:5000]
+            sections.append(f"### 📋 SC INFO (3ra prioridad - HORARIOS Y ACTIVIDADES DE LA SEMANA)\n{val}")
         
-        # Resto de datos
+        # 4. RESTO
+        skip_keys = ("instrucciones_padres", "emails", "scinfo")
         for key, value in data.items():
-            if value and key != "scinfo":
+            if value and key not in skip_keys:
                 limit = 4000 if key in high_limit_keys else 2000
                 value_str = json.dumps(value, indent=2, ensure_ascii=False)[:limit]
                 if key == "horarios":
-                    sections.append(f"### {key} (SOLO usar si NO hay info en SC Info para ese día)\n{value_str}")
+                    sections.append(f"### {key} (SOLO usar si NO hay info en SC Info ni instrucciones para ese día)\n{value_str}")
                 else:
                     sections.append(f"### {key}\n{value_str}")
         return "\n\n".join(sections)

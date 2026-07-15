@@ -1,0 +1,194 @@
+[
+  {
+    "fecha": "2026-07-15",
+    "descripcion": "La próxima semana viviremos una de las tradiciones más esperadas por nuestros estudiantes: la Semana SC 2026, que se realizará entre el 13 y el 15 de ",
+    "tipo": "evento",
+    "hijo": "ambos",
+    "fuente": "scinfo",
+    "detectado": "2026-07-14"
+  },
+  {
+    "fecha": "2026-07-15",
+    "descripcion": "13 al 15 de julio - Semana SC Lunes y martes salida 1° a IV° a las 13:10 hrs sin almuerzo.",
+    "tipo": "evento",
+    "hijo": "ambos",
+    "fuente": "scinfo",
+    "detectado": "2026-07-14"
+  },
+  {
+    "fecha": "2026-07-17",
+    "descripcion": "17 de julio - Interferiado Día sin clases.",
+    "tipo": "sin_clases",
+    "hijo": "ambos",
+    "fuente": "scinfo",
+    "detectado": "2026-07-14"
+  },
+  {
+    "fecha": "2026-07-22",
+    "descripcion": "22 de julio - Entrevistas de apoderados Día sin clases.",
+    "tipo": "sin_clases",
+    "hijo": "ambos",
+    "fuente": "scinfo",
+    "detectado": "2026-07-14"
+  },
+  {
+    "fecha": "2026-08-26",
+    "descripcion": "26 de agosto - Jornada de capacitación y planificación de profesores Día sin clases.",
+    "tipo": "sin_clases",
+    "hijo": "ambos",
+    "fuente": "scinfo",
+    "detectado": "2026-07-14"
+  },
+  {
+    "fecha": "2026-09-11",
+    "descripcion": "11 de septiembre - Fiesta folclórica SC Salida de estudiantes 13.20 hrs.",
+    "tipo": "evento",
+    "hijo": "ambos",
+    "fuente": "scinfo",
+    "detectado": "2026-07-14"
+  },
+  {
+    "fecha": "2026-09-17",
+    "descripcion": "14 al 17 de septiembre - Vacaciones Fiestas Patrias 16 de octubre - Día del Profesor",
+    "tipo": "evento",
+    "hijo": "ambos",
+    "fuente": "scinfo",
+    "detectado": "2026-07-14"
+  },
+  {
+    "fecha": "2026-10-16",
+    "descripcion": "16 de octubre - Día del Profesor Día sin clases por instrucción ministerial.",
+    "tipo": "sin_clases",
+    "hijo": "ambos",
+    "fuente": "scinfo",
+    "detectado": "2026-07-14"
+  },
+  {
+    "fecha": "2026-11-31",
+    "descripcion": "31 de noviembre, 1 y 2 de diembre - Colegio Sede PAES Días sin clases.",
+    "tipo": "sin_clases",
+    "hijo": "ambos",
+    "fuente": "scinfo",
+    "detectado": "2026-07-14"
+  },
+  {
+    "fecha": "2026-12-07",
+    "descripcion": "7 de diciembre - Interferiado Día sin clases.",
+    "tipo": "sin_clases",
+    "hijo": "ambos",
+    "fuente": "scinfo",
+    "detectado": "2026-07-14"
+  },
+  {
+    "fecha": "2026-12-09",
+    "descripcion": "9 de diciembre Último día de clases Ciclo Inicial",
+    "tipo": "evento",
+    "hijo": "ambos",
+    "fuente": "scinfo",
+    "detectado": "2026-07-14"
+  },
+  {
+    "fecha": "2026-12-10",
+    "descripcion": "10 de diciembre Último día de clases Ciclo Básico",
+    "tipo": "evento",
+    "hijo": "ambos",
+    "fuente": "scinfo",
+    "detectado": "2026-07-14"
+  },
+  {
+    "fecha": "2026-12-11",
+    "descripcion": "11 de diciembre Último día de clases Ciclos Medio y Superior",
+    "tipo": "evento",
+    "hijo": "ambos",
+    "fuente": "scinfo",
+    "detectado": "2026-07-14"
+  },
+  {
+    "fecha": "2026-12-14",
+    "descripcion": "14 de diciembre 8.15 hrs Liturgia de cierre Ciclos Medio y Superior",
+    "tipo": "evento",
+    "hijo": "ambos",
+    "fuente": "scinfo",
+    "detectado": "2026-07-14"
+  },
+  {
+    "fecha": "2026-07-15",
+    "descripcion": "Este año la Semana del Colegio será los días lunes 13, martes 14 y miércoles 15 de julio. Con el tema:  “Festividades que trascienden”, las alianzas p",
+    "tipo": "evento",
+    "hijo": "ambos",
+    "fuente": "scinfo",
+    "detectado": "2026-07-14"
+  },
+  {
+    "fecha": "2026-07-13",
+    "descripcion": "Vestimenta 1° básico a IV° medio:  El día lunes 13 de julio los alumnos/as deberán venir disfrazados según el tema de su Alianza.  Mientras que los dí",
+    "tipo": "evento",
+    "hijo": "ambos",
+    "fuente": "scinfo",
+    "detectado": "2026-07-14"
+  },
+  {
+    "fecha": "2026-07-15",
+    "descripcion": "Vestimenta 1° básico a IV° medio:  El día lunes 13 de julio los alumnos/as deberán venir disfrazados según el tema de su Alianza.  Mientras que los dí",
+    "tipo": "evento",
+    "hijo": "ambos",
+    "fuente": "scinfo",
+    "detectado": "2026-07-14"
+  },
+  {
+    "fecha": "2026-07-14",
+    "descripcion": "Lunes 13 y martes 14 de julio:  13:10 hrs. Miércoles 15 de julio:  13:20 hrs.",
+    "tipo": "evento",
+    "hijo": "ambos",
+    "fuente": "scinfo",
+    "detectado": "2026-07-14"
+  },
+  {
+    "fecha": "2026-07-15",
+    "descripcion": "Miércoles 15 de julio:  13:20 hrs. Estos días no habrán actividades extraprogramáticas ni deportivas en las tardes y los",
+    "tipo": "evento",
+    "hijo": "ambos",
+    "fuente": "scinfo",
+    "detectado": "2026-07-14"
+  },
+  {
+    "fecha": "2026-07-15",
+    "descripcion": "Debido a las actividades de la semana del colegio y el horario de salida de los estudiantes, se suspenden los entrenamientos para los días 13, 14 y 15",
+    "tipo": "evento",
+    "hijo": "ambos",
+    "fuente": "scinfo",
+    "detectado": "2026-07-14"
+  },
+  {
+    "fecha": "2026-07-13",
+    "descripcion": "El lunes 13 de julio empieza la primera etapa de preinscripción de los talleres extraprogramáticos del segundo semestre. Toda la información sobre fec",
+    "tipo": "evento",
+    "hijo": "ambos",
+    "fuente": "scinfo",
+    "detectado": "2026-07-14"
+  },
+  {
+    "fecha": "2026-07-14",
+    "descripcion": "Los esperamos el martes 14 de julio a las 8:00 hrs en la Sala Verde. RETIRO COMUNIDAD SC",
+    "tipo": "evento",
+    "hijo": "ambos",
+    "fuente": "scinfo",
+    "detectado": "2026-07-14"
+  },
+  {
+    "fecha": "2026-07-25",
+    "descripcion": "Sábado 25 de julio, de 9:30 a 13:00 hrs. ¿Dónde?",
+    "tipo": "evento",
+    "hijo": "ambos",
+    "fuente": "scinfo",
+    "detectado": "2026-07-14"
+  },
+  {
+    "fecha": "2026-09-01",
+    "descripcion": "Invitamos a apoderados y exalumnos/as a participar en nuestra actividad \"Encuentro con Profesionales 2026\", diseñado para que las alumnas de III° medi",
+    "tipo": "evento",
+    "hijo": "ambos",
+    "fuente": "scinfo",
+    "detectado": "2026-07-14"
+  }
+]

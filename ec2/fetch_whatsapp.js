@@ -15,6 +15,9 @@ const GROUPS = {
     '120363024586413625@g.us': '5to_sharks_franco',
 };
 
+// Grupo Monitor Colegio - mensajes manuales de los padres
+const MONITOR_GROUP_ID = '120363409985436264@g.us';
+
 async function start() {
     const { state, saveCreds } = await useMultiFileAuthState('./baileys_auth');
     const sock = makeWASocket({ auth: state });
@@ -51,6 +54,35 @@ async function start() {
                 fs.mkdirSync('data', { recursive: true });
                 fs.writeFileSync('data/whatsapp_messages.json', JSON.stringify(result, null, 2), 'utf-8');
                 console.log('Guardado en data/whatsapp_messages.json');
+
+                // Leer grupo Monitor Colegio (mensajes manuales de los padres)
+                try {
+                    const monitorMessages = await sock.fetchMessagesFromWA(MONITOR_GROUP_ID, 30);
+                    const now2 = Date.now() / 1000;
+                    const manualInputs = monitorMessages
+                        .filter(m => {
+                            if (!m.messageTimestamp || (now2 - m.messageTimestamp) > SECONDS_FILTER) return false;
+                            const body = m.message?.conversation || m.message?.extendedTextMessage?.text || '';
+                            // Filtrar mensajes del bot (resúmenes que empiezan con emoji de resumen)
+                            if (body.startsWith('📋') || body.startsWith('📬') || body.startsWith('🚀') || body.startsWith('🧪')) return false;
+                            // Solo mensajes con texto
+                            if (!body || body === '[multimedia]') return false;
+                            return true;
+                        })
+                        .map(m => ({
+                            from: m.pushName || 'desconocido',
+                            time: new Date(m.messageTimestamp * 1000).toLocaleTimeString('es-CL', {hour:'2-digit', minute:'2-digit'}),
+                            date: new Date(m.messageTimestamp * 1000).toLocaleDateString('es-CL'),
+                            body: m.message?.conversation || m.message?.extendedTextMessage?.text || '',
+                        }));
+                    
+                    fs.writeFileSync('data/monitor_inputs.json', JSON.stringify(manualInputs, null, 2), 'utf-8');
+                    console.log(`monitor_colegio: ${manualInputs.length} mensajes manuales`);
+                } catch (e) {
+                    console.error(`Error monitor group: ${e.message}`);
+                    fs.writeFileSync('data/monitor_inputs.json', '[]', 'utf-8');
+                }
+
                 resolve();
                 process.exit(0);
             }

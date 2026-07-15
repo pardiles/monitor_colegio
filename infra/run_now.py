@@ -51,6 +51,15 @@ subprocess.run(['scp', '-o', 'StrictHostKeyChecking=no', '-i', KEY,
     'src/processor/summarizer.py', f'ubuntu@{ip}:/opt/monitor-colegio/src/processor/summarizer.py'],
     timeout=10)
 
+# Copiar main.py y calendar_store
+ec2ic.send_ssh_public_key(InstanceId=ID, InstanceOSUser='ubuntu', SSHPublicKey=PUB)
+subprocess.run(['scp', '-o', 'StrictHostKeyChecking=no', '-i', KEY,
+    'main.py', f'ubuntu@{ip}:/opt/monitor-colegio/main.py'], timeout=10)
+
+ec2ic.send_ssh_public_key(InstanceId=ID, InstanceOSUser='ubuntu', SSHPublicKey=PUB)
+subprocess.run(['scp', '-o', 'StrictHostKeyChecking=no', '-i', KEY,
+    'src/calendar_store.py', f'ubuntu@{ip}:/opt/monitor-colegio/src/calendar_store.py'], timeout=10)
+
 # Ejecutar
 print(f'Running {MODE}...')
 ec2ic.send_ssh_public_key(InstanceId=ID, InstanceOSUser='ubuntu', SSHPublicKey=PUB)
@@ -60,11 +69,10 @@ result = subprocess.run(
     capture_output=True, text=True, timeout=300)
 print(result.stdout)
 
-# Re-habilitar y apagar
+# Re-habilitar (NO apagar)
 ec2ic.send_ssh_public_key(InstanceId=ID, InstanceOSUser='ubuntu', SSHPublicKey=PUB)
 subprocess.run(['ssh', '-o', 'StrictHostKeyChecking=no', '-i', KEY, f'ubuntu@{ip}',
     'sudo systemctl enable monitor-colegio.service'], capture_output=True, text=True, timeout=10)
-ec2.stop_instances(InstanceIds=[ID])
 events.enable_rule(Name='monitor-colegio-morning')
 events.enable_rule(Name='monitor-colegio-evening')
-print('Done! EC2 stopped, EventBridge re-enabled')
+print(f'Done! EC2 RUNNING at {ip} - EventBridge re-enabled')

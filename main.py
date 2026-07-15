@@ -27,7 +27,8 @@ from src.sources.noticias_web import fetch_noticias
 from src.sources.extracurriculares import fetch_extracurriculares
 from src.sources.scinfo import fetch_scinfo_latest
 from src.processor.summarizer import Summarizer
-from src.messenger.whatsapp import WhatsAppSender
+from src.calendar_store import update_calendar_from_sources, get_upcoming_events
+# from src.messenger.whatsapp import WhatsAppSender  # Replaced by Baileys
 
 
 def _load_horarios():
@@ -42,15 +43,21 @@ def _load_horarios():
 def _load_whatsapp():
     """Cargar mensajes de WhatsApp desde archivo JSON."""
     wa_file = os.path.join("data", "whatsapp_messages.json")
+    monitor_file = os.path.join("data", "monitor_inputs.json")
+    result = {"whatsapp_5A_franco": [], "whatsapp_1C_blanca": [], "whatsapp_sharks_franco": [], "instrucciones_padres": []}
+    
     if os.path.exists(wa_file):
         with open(wa_file, "r", encoding="utf-8") as f:
             data = json.load(f)
-            return {
-                "whatsapp_5A_franco": data.get("5A_franco", []),
-                "whatsapp_1C_blanca": data.get("1C_blanca", []),
-                "whatsapp_sharks_franco": data.get("5to_sharks_franco", []),
-            }
-    return {"whatsapp_5A_franco": [], "whatsapp_1C_blanca": [], "whatsapp_sharks_franco": []}
+            result["whatsapp_5A_franco"] = data.get("5A_franco", [])
+            result["whatsapp_1C_blanca"] = data.get("1C_blanca", [])
+            result["whatsapp_sharks_franco"] = data.get("5to_sharks_franco", [])
+    
+    if os.path.exists(monitor_file):
+        with open(monitor_file, "r", encoding="utf-8") as f:
+            result["instrucciones_padres"] = json.load(f)
+    
+    return result
 
 
 def ingest_all() -> dict:
@@ -159,6 +166,17 @@ def ingest_all() -> dict:
     except Exception as e:
         print(f"   ❌ Error: {e}")
         data["scinfo"] = {}
+
+    # 6. Actualizar calendario persistente con datos de todas las fuentes
+    print("\n📅 Calendario persistente...")
+    try:
+        new_events = update_calendar_from_sources(data)
+        upcoming = get_upcoming_events(days=14)
+        data["calendario_persistente"] = upcoming
+        print(f"   ✅ {new_events} eventos nuevos, {len(upcoming)} próximos 14 días")
+    except Exception as e:
+        print(f"   ❌ Error: {e}")
+        data["calendario_persistente"] = []
 
     return data
 
