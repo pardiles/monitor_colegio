@@ -1,0 +1,17 @@
+{
+  "ImageId": "ami-0e3f2fedbede372ba",
+  "InstanceType": "t3.small",
+  "SecurityGroupIds": ["sg-0956c7e5af16ed1a4"],
+  "IamInstanceProfile": {
+    "Name": "monitor-colegio-MonitorInstanceProfile-XyoAUKJWz6RE"
+  },
+  "BlockDeviceMappings": [
+    {
+      "DeviceName": "/dev/sda1",
+      "Ebs": {
+        "VolumeSize": 8,
+        "VolumeType": "gp3"
+      }
+    }
+  ]
+}

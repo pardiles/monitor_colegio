@@ -5,7 +5,7 @@ ec2ic = boto3.client('ec2-instance-connect', region_name='us-east-2')
 ID = 'i-0ad4f13769d8bea94'
 KEY = os.path.expanduser('~/.ssh/id_rsa')
 PUB = open(os.path.expanduser('~/.ssh/id_rsa.pub')).read()
-ip = '18.220.188.119'
+ip = '3.18.213.25'
 
 files = [
     ('main.py', '/opt/monitor-colegio/main.py'),

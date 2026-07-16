@@ -4,7 +4,7 @@
     {
       "Effect": "Allow",
       "Action": ["ec2:StartInstances"],
-      "Resource": "arn:aws:ec2:us-east-2:669294688330:instance/i-0ad4f13769d8bea94"
+      "Resource": "arn:aws:ec2:us-east-2:669294688330:instance/i-00d2a56f9b8078a10"
     },
     {
       "Effect": "Allow",

@@ -16,6 +16,23 @@ Hijos:
 
 Colegio: Colegio del Sagrado Corazón Apoquindo
 
+Régimen de custodia (semana por medio):
+- Semanas PARES (14 jul, 28 jul, 11 ago...): ANGELA tiene los niños (desde lunes PM hasta martes AM siguiente, los deja en el colegio)
+- Semanas IMPARES (21 jul, 4 ago, 18 ago...): PABLO tiene los niños (desde martes PM, los busca al colegio, hasta lunes AM siguiente, los deja en el colegio)
+- VACACIONES DE INVIERNO: 1ra semana con Pablo, 2da semana con Angela
+- VACACIONES DE VERANO: Régimen base hasta 31 dic. Enero: 2 primeras semanas Pablo, 2 siguientes Angela. Febrero: 2 primeras semanas Pablo, 2 siguientes Angela (hasta entrada a clases en marzo)
+- FIESTAS PATRIAS (18 sept): Se alternan año a año. 2026 le toca a ANGELA (fechas según SC Info)
+- NAVIDAD (24-25 dic): Se alternan año a año. 2026 le toca a PABLO
+- AÑO NUEVO (31 dic - 1 ene): Se alternan año a año. 2026 le toca a ANGELA
+- PENSIÓN ALIMENTICIA: Pablo debe pagar antes del día 5 de cada mes (pensión + $100.000 CLP por servicios de Liliana Vargas). Recordar en el resumen AM del día 1 de cada mes.
+- PAGOS SHARKS (fútbol Franco): Angela paga todo lo relacionado al grupo "Copas 5to Sharks SC" (cuotas, equipamiento, torneos).
+- PAGOS COLEGIO: Pablo paga todo lo relacionado con el Sagrado Corazón (cuotas, casino, materiales).
+- CUMPLEAÑOS (regalos): Quien tiene los niños esa semana compra el regalo para el cumpleaños al que están invitados.
+- DÍA DEL PADRE/MADRE: Si no les toca esa semana con el respectivo padre/madre, los niños tienen derecho a estar durante el día con él/ella.
+- DÍA DEL PADRE / DÍA DE LA MADRE: Si no les toca esa semana con el respectivo padre/madre, los niños tienen derecho a estar con él/ella durante el día.
+- En el resumen indicar quién tiene los niños esa semana y quién hace el cambio (dejar/buscar)
+- Ejemplo: "Esta semana los niños están con Angela. Pablo los busca el martes 22 después del colegio."
+
 Alianzas Semana SC 2026:
 - Franco (5°A) → Alianza A = MÉXICO (colores naranjo, morado, fucsia)
 - Blanca (1°C) → Alianza C = BRASIL (colores verde, amarillo, azul)
@@ -158,7 +175,7 @@ class Summarizer:
 
     def __init__(self, api_key: str):
         self.client = anthropic.Anthropic(api_key=api_key)
-        self.model = "claude-sonnet-4-6"
+        self.model = "claude-haiku-4-5-20251001"
 
     def generate_morning_briefing(self, data: Dict[str, Any], is_weekly: bool = False) -> str:
         """Genera el briefing matutino."""
