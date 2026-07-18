@@ -76,6 +76,25 @@ def main():
             if sn.login():
                 print("[SCRAPE] Login OK")
 
+                # Extraprogramáticas PRIMERO (SSO URL caduca rápido)
+                try:
+                    sso_url = sn.get_extracurriculares_url()
+                    if sso_url:
+                        extras_raw = fetch_extracurriculares(sso_url)
+                        for e in extras_raw:
+                            if e.dia and e.horario:
+                                hora_salida = e.horario.split("-")[1] if "-" in e.horario else ""
+                                result["extras"].append({
+                                    "nombre": e.nombre,
+                                    "dia": e.dia,
+                                    "horario": e.horario,
+                                    "hijo": "",  # Se asigna después de detectar hijos
+                                    "hora_salida_real": hora_salida,
+                                })
+                        print(f"[SCRAPE] {len(result['extras'])} extraprogramáticas")
+                except Exception as e:
+                    print(f"[SCRAPE] Extras error: {e}")
+
                 # Detectar hijos desde asistencia (tiene nombre completo, curso, profesora jefe, inasistencias con fecha)
                 try:
                     for idx in range(5):  # Max 5 hijos
@@ -131,24 +150,12 @@ def main():
                 except Exception as e:
                     print(f"[SCRAPE] Error detectando hijos: {e}")
 
-                # Extraprogramáticas
-                try:
-                    sso_url = sn.get_extracurriculares_url()
-                    if sso_url:
-                        extras_raw = fetch_extracurriculares(sso_url)
-                        for e in extras_raw:
-                            if e.dia and e.horario:
-                                hora_salida = e.horario.split("-")[1] if "-" in e.horario else ""
-                                result["extras"].append({
-                                    "nombre": e.nombre,
-                                    "dia": e.dia,
-                                    "horario": e.horario,
-                                    "hijo": result["hijos"][0]["nombre"] if result["hijos"] else "",
-                                    "hora_salida_real": hora_salida,
-                                })
-                        print(f"[SCRAPE] {len(result['extras'])} extraprogramáticas")
-                except Exception as e:
-                    print(f"[SCRAPE] Extras error: {e}")
+                # Asignar hijos a extraprogramáticas (si se detectaron)
+                if result["extras"] and result["hijos"]:
+                    # Por defecto asignar al primer hijo (SchoolNet no indica a quién)
+                    for e in result["extras"]:
+                        if not e["hijo"]:
+                            e["hijo"] = result["hijos"][0]["nombre"]
             else:
                 print("[SCRAPE] Login falló")
                 result["error"] = "Login falló. Verifica usuario y contraseña."

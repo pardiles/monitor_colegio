@@ -431,6 +431,24 @@ def ingest_for_user(user_cfg: dict) -> dict:
             try:
                 sn = SchoolNetClient(sn_user, sn_pass)
                 if sn.login():
+                    # Extraprogramáticas PRIMERO (SSO caduca rápido)
+                    try:
+                        sso_url = sn.get_extracurriculares_url()
+                        if sso_url:
+                            from src.sources.extracurriculares import fetch_extracurriculares as fetch_extras
+                            extras_raw = fetch_extras(sso_url)
+                            if extras_raw:
+                                data["extraprogramaticas"] = [vars(e) for e in extras_raw]
+                                # Actualizar config del usuario
+                                user_cfg["extraprogramaticas"] = [
+                                    {"nombre": e.nombre, "dia": e.dia, "horario": e.horario,
+                                     "hijo": user_cfg["hijos"][0]["nombre"] if user_cfg.get("hijos") else "",
+                                     "hora_salida_real": e.horario.split("-")[1] if "-" in e.horario else ""}
+                                    for e in extras_raw if e.dia and e.horario
+                                ]
+                    except Exception as e:
+                        print(f"   ⚠️ Extraprogramáticas: {e}")
+
                     data["comunicaciones"] = sn.get_comunicaciones()
                     hijos = user_cfg.get("hijos", [])
                     for i, hijo in enumerate(hijos):
