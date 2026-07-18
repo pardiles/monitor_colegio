@@ -559,7 +559,9 @@ def ingest_for_user(user_cfg: dict) -> dict:
     # Calendario persistente: actualizar con datos nuevos y cargar próximos eventos
     print("\n📅 Calendario persistente...")
     try:
+        data["_user_cfg"] = user_cfg  # Para que calendar_store pueda asignar hijo por nivel
         new_events = update_calendar_from_sources(data)
+        del data["_user_cfg"]
         upcoming = get_upcoming_events(days=14)
         data["calendario_persistente"] = upcoming
         print(f"   ✅ {new_events} eventos nuevos, {len(upcoming)} próximos 14 días")

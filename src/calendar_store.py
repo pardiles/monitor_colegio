@@ -356,12 +356,40 @@ def update_calendar_from_sources(data: Dict) -> int:
     
     # Desde calendario web del colegio (API directa, no necesita AI)
     if "calendario" in data:
+        # Obtener mapeo nivel → hijo desde la config (si está disponible)
+        hijos_cfg = data.get("_user_cfg", {}).get("hijos", [])
+        nivel_to_hijo = {}
+        for h in hijos_cfg:
+            curso = h.get("curso", "")
+            if curso:
+                # "5-A" → nivel "5", "1-C" → nivel "1"
+                nivel = curso.split("-")[0].strip()
+                nivel_to_hijo[nivel] = h.get("nombre", "").lower()
+
         for ev in data["calendario"]:
             fecha = ev.get("start", "")[:10]
             desc = ev.get("title", "") + " - " + ev.get("description", "")
             if fecha and desc:
+                # Asignar hijo por categoría del evento (nivel del curso)
+                hijo = "ambos"
+                cat = str(ev.get("category", ""))
+                if cat and nivel_to_hijo:
+                    # Category format: "1º Lenguaje", "5-A Lenguaje", "5º Lenguaje", etc.
+                    # Extraer el nivel (primer dígito)
+                    cat_nivel = cat.split("º")[0].split("°")[0].split("-")[0].strip()
+                    if cat_nivel in nivel_to_hijo:
+                        hijo = nivel_to_hijo[cat_nivel]
+                elif nivel_to_hijo:
+                    # Fallback: buscar niveles en la descripción
+                    matching_hijos = set()
+                    for nivel, nombre in nivel_to_hijo.items():
+                        if f"{nivel}º" in desc or f"{nivel}°" in desc:
+                            matching_hijos.add(nombre)
+                    if len(matching_hijos) == 1:
+                        hijo = matching_hijos.pop()
+
                 if add_event(fecha=fecha, descripcion=desc[:150], tipo="evento",
-                           hijo="ambos", fuente="calendario_web"):
+                           hijo=hijo, fuente="calendario_web"):
                     new_count += 1
 
     # Desde pagos (vencimientos)
