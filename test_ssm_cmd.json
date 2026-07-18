@@ -1,0 +1,1 @@
+{"commands":["cd /opt/monitor-colegio && export HOME=/home/ubuntu && export PATH=/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH && python3 -c 'from main import _load_users; print(len(_load_users()))' "]}

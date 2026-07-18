@@ -451,6 +451,31 @@ def ingest_for_user(user_cfg: dict) -> dict:
             except Exception as e:
                 print(f"   ⚠️ Calendario: {e}")
 
+        # Extraprogramáticas (desde SchoolNet SSO)
+        if sn_user and sn_pass:
+            try:
+                sn_extras = SchoolNetClient(sn_user, sn_pass)
+                if sn_extras.login():
+                    sso_url = sn_extras.get_extracurriculares_url()
+                    if sso_url:
+                        extras_raw = fetch_extracurriculares(sso_url)
+                        if extras_raw:
+                            data["extraprogramaticas_schoolnet"] = [vars(e) for e in extras_raw]
+                            # Actualizar config del usuario con extras actuales
+                            user_cfg["extraprogramaticas"] = [
+                                {
+                                    "nombre": e.nombre,
+                                    "dia": e.dia,
+                                    "horario": e.horario,
+                                    "hijo": user_cfg["hijos"][0]["nombre"] if user_cfg.get("hijos") else "desconocido",
+                                    "hora_salida_real": e.horario.split("-")[1] if "-" in e.horario else "",
+                                }
+                                for e in extras_raw if e.dia and e.horario
+                            ]
+                            print(f"   ✅ Extraprogramáticas: {len(user_cfg['extraprogramaticas'])}")
+            except Exception as e:
+                print(f"   ⚠️ Extraprogramáticas: {e}")
+
         # SC Info (si es Sagrado Corazón)
         if colegio.get("scinfo_url"):
             try:

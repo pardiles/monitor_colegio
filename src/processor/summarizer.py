@@ -96,6 +96,12 @@ REGLAS GENERALES:
 - Omitir secciones vacías
 - Español chileno natural
 
+PRIORIDAD ABSOLUTA - FECHAS Y HORARIOS:
+- SIEMPRE incluir qué toca MAÑANA: pruebas, entrevistas, reuniones, actividades, hora de salida
+- Si hay entrevista/reunión con hora y lugar, NUNCA omitirla
+- El calendario_persistente tiene eventos futuros con fecha y hora — REVISAR SIEMPRE
+- En el resumen semanal, incluir TODOS los eventos del calendario de la semana día por día
+
 REGLA SOBRE INSTRUCCIONES DE LOS PADRES (instrucciones_padres):
 - Son mensajes escritos por los padres en el grupo "Monitor Colegio"
 - Tienen MÁXIMA PRIORIDAD — son cambios o aclaraciones manuales
@@ -111,32 +117,33 @@ def build_morning_prompt(context: str) -> str:
     return f"""Eres un asistente que genera briefings matutinos para un apoderado.
 {context}
 
-Formato:
+FORMATO OBLIGATORIO:
+
 📋 [Día y fecha]
 
-🏫 HOY - [HIJO] ([curso]):
-• Ramos: [lista]. Sale a las [hora real considerando extras o eventos]
-• ⚠️ Prueba/evaluación si tiene hoy
-• ⚽ Extraprogramática si tiene hoy (o indicar si está suspendida)
+📢 AVISOS GENERALES:
+• [Aviso] (fuente: SC Info/email/WA)
+• [Aviso] (fuente: ...)
 
+🏫 HOY [día] - [HIJO] ([curso]):
+• Ramos: [lista]. Sale a las [hora]
+• ⚠️ Prueba/evaluación (fuente: calendario)
+• ⚽ Extraprogramática (fuente: config)
 (repetir para cada hijo)
 
-📅 ESTA SEMANA:
-• [Día]: ⚠️ Prueba [materia] - [HIJO] (tema)
-• [Día]: 🎭 Actividad especial (indicar por hijo, qué llevar)
-• Feriados/días sin clases/salidas anticipadas
-
-🎂 CUMPLEAÑOS:
-• Compañero/a - fecha y detalle
+📅 MAÑANA [día]:
+• [HIJO]: [qué toca, hora salida, pruebas, actividades] (fuente: ...)
+(si es resumen semanal, repetir para cada día de la semana)
 
 📨 PENDIENTES:
-• Indicar a quién aplica
+• [Entrega/plazo] - [HIJO] (fuente: ...)
 
-Reglas:
-- SIEMPRE indicar a qué hijo aplica
-- Las comunicaciones del colegio son la fuente más confiable para horarios
-- Si dice "sin extraprogramáticas", NO incluirlas
-- Si indica salida anticipada, usar esa hora (no la normal)
+REGLAS DE FORMATO:
+- Agrupar por DÍA, no por fuente. Si 2 fuentes dicen lo mismo, usar la que tenga más detalle
+- Al final de cada punto, indicar la fuente entre paréntesis: (SC Info), (email), (WA 5°A), (calendario), (SchoolNet)
+- NO repetir la misma info si viene de múltiples fuentes — fusionar en 1 línea con la fuente más completa
+- SIEMPRE incluir hora de salida por hijo
+- SIEMPRE revisar calendario_persistente para entrevistas/pruebas con hora
 - Máximo 22 líneas
 - Español chileno natural
 """
@@ -144,41 +151,61 @@ Reglas:
 
 def build_evening_prompt(context: str) -> str:
     """Prompt de sistema para resumen nocturno."""
-    return f"""Eres un asistente que genera resúmenes nocturnos para un apoderado. Cubre lo que pasó hoy y prepara para mañana.
+    return f"""Eres un asistente que genera resúmenes nocturnos para un apoderado. Cubre SOLO lo nuevo de hoy (que no estaba en el resumen AM) y prepara para mañana.
 {context}
 
-Formato:
+FORMATO OBLIGATORIO:
+
 📬 Resumen del día - [Día y fecha]
 
-📧 COMUNICACIONES NUEVAS:
-• Resumen (indicar a qué hijo aplica)
+📢 NOVEDADES DE HOY (solo info nueva que llegó durante el día):
+• [Novedad] (fuente: email/SchoolNet/WA grupo)
+(Si no hay novedades nuevas, omitir esta sección)
 
-💬 GRUPOS WA:
-• Resumen de lo relevante por grupo (indicar hijo)
+💬 WA GRUPOS (solo si hubo mensajes relevantes hoy):
+• [Grupo]: [resumen corto] (WA 5°A / WA 1°C)
 
-📝 ANOTACIONES (si hay):
-• [HIJO]: [positiva/negativa] - motivo
-
-📚 MAÑANA [día] - [HIJO] ([curso]):
-• Ramos: [lista]. Sale a las [hora real]
-• ⚠️ Prueba si tiene mañana
-• ⚽ Extraprogramática si tiene
-
+📅 MAÑANA [día]:
+🏫 [HIJO] ([curso]):
+• Ramos: [lista]. Sale a las [hora]
+• ⚠️ Prueba/evaluación si tiene (fuente: calendario)
+• ⚽ Extraprogramática (fuente: config)
 (repetir para cada hijo)
 
-🗓️ ENTREVISTAS/REUNIONES (si hay):
-• Fecha, hora, lugar, con quién
+📅 PRÓXIMOS DÍAS (si hay eventos relevantes en los próximos 3 días):
+• [Día]: [Evento] - [HIJO] (fuente: ...)
 
-🎭 ACTIVIDADES ESPECIALES (si hay):
-• Qué llevar/hacer por hijo
-
-Reglas:
-- SIEMPRE separar por hijo
+REGLAS DE FORMATO:
+- NO repetir info que ya se dijo en el resumen AM de hoy (avisos generales, calendario, etc.)
+- Solo incluir NOVEDADES: emails/comunicaciones que llegaron HOY, mensajes WA de HOY
+- La sección MAÑANA SÍ se repite siempre (es la preparación para el día siguiente)
+- Agrupar por DÍA, no por fuente. Fusionar si 2 fuentes dicen lo mismo
+- Indicar fuente al final: (SC Info), (email), (WA 5°A), (calendario)
+- SIEMPRE revisar calendario_persistente para mañana
 - Si mañana es fin de semana, mostrar info del lunes
-- Comunicaciones del colegio = fuente principal para horarios
 - Omitir secciones vacías
-- Máximo 30 líneas
+- Máximo 25 líneas
 - Español chileno natural
+
+RESUMEN SEMANAL (domingo PM):
+Si es domingo PM, cambiar el formato a panorama COMPLETO de la semana que viene:
+📋 Semana [fecha inicio] al [fecha fin]
+
+📢 AVISOS GENERALES DE LA SEMANA:
+• [avisos que aplican a toda la semana]
+
+📅 LUNES [fecha]:
+🏫 [HIJO]: [ramos, hora salida, pruebas, actividades] (fuente)
+(repetir por cada hijo)
+
+📅 MARTES [fecha]:
+...
+(repetir para cada día lunes a viernes)
+
+📨 PENDIENTES/PLAZOS DE LA SEMANA:
+• [entrega/plazo] - [HIJO] (fuente)
+
+En el semanal SÍ incluir TODO del calendario_persistente para esa semana.
 """
 
 
@@ -275,8 +302,13 @@ Genera el resumen nocturno."""
             val = json.dumps(data["scinfo"], indent=2, ensure_ascii=False)[:5000]
             sections.append(f"### 📋 SC INFO (HORARIOS Y ACTIVIDADES DE LA SEMANA)\n{val}")
 
-        # 5. Resto
-        skip = set(high_priority) | {"emails_ambos", "emails_esperanza", "emails_simón"}
+        # 5. Calendario persistente (eventos futuros con fecha/hora)
+        if "calendario_persistente" in data and data["calendario_persistente"]:
+            val = json.dumps(data["calendario_persistente"], indent=2, ensure_ascii=False)[:4000]
+            sections.append(f"### 📅 CALENDARIO PERSISTENTE (EVENTOS FUTUROS CON FECHA Y HORA - REVISAR SIEMPRE)\n{val}")
+
+        # 6. Resto
+        skip = set(high_priority) | {"emails_ambos", "emails_esperanza", "emails_simón", "calendario_persistente"}
         for key, value in data.items():
             if value and key not in skip:
                 limit = 4000 if "whatsapp" in key else 2000
