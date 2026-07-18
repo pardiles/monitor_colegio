@@ -156,6 +156,8 @@ async function startSession(userCfg) {
 async function main() {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.mkdirSync(path.join(DATA_DIR, 'outbox'), { recursive: true });
+    // Ensure outbox is world-writable (send_whatsapp.js runs as root via SSM)
+    try { fs.chmodSync(path.join(DATA_DIR, 'outbox'), 0o777); } catch {}
 
     // Cargar usuarios
     const users = loadJSON(USERS_FILE, []);

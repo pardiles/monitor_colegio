@@ -63,7 +63,7 @@ const mensaje = messageData.mensaje.replace(/\*\*/g, '*');
 console.log(`[${userId}] Mensaje listo (${mensaje.length} chars), escribiendo outbox...`);
 
 // Escribir en outbox para que wa_listener lo recoja
-fs.mkdirSync(OUTBOX_DIR, { recursive: true });
+fs.mkdirSync(OUTBOX_DIR, { recursive: true, mode: 0o777 });
 const outboxFile = path.join(OUTBOX_DIR, `${userId}_${Date.now()}.json`);
 const outboxData = {
     user_id: userId,
@@ -72,7 +72,9 @@ const outboxData = {
     created_at: new Date().toISOString(),
     status: 'pending',
 };
-fs.writeFileSync(outboxFile, JSON.stringify(outboxData, null, 2));
+fs.writeFileSync(outboxFile, JSON.stringify(outboxData, null, 2), { mode: 0o666 });
+// Force permissions (umask may override mode)
+try { fs.chmodSync(outboxFile, 0o666); } catch {}
 console.log(`[${userId}] ✅ Outbox escrito: ${path.basename(outboxFile)}`);
 console.log(`[${userId}] wa_listener lo enviará en ~3s`);
 
