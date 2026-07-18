@@ -116,6 +116,10 @@ class SchoolNetClient:
         """Obtener informes disponibles."""
         return self._get("informes/index")
 
+    def get_salud(self, alumno: int = 0) -> Dict:
+        """Obtener visitas a enfermería por alumno."""
+        return self._get("salud/index", {"alumno": alumno})
+
     def get_extracurriculares_url(self) -> str:
         """Obtener URL SSO para extracurriculares."""
         data = self._get("extracurricularescondor/index")

@@ -438,6 +438,17 @@ def ingest_for_user(user_cfg: dict) -> dict:
                     data["asistencia"] = sn.get_asistencia(0)
                     data["pagos"] = sn.get_pagos()
                     data["companeros"] = sn.get_companeros(0)
+                    # Conducta y salud (para resumen)
+                    hijos_cfg = user_cfg.get("hijos", [])
+                    for i, hijo in enumerate(hijos_cfg):
+                        try:
+                            data[f"conducta_{hijo['nombre'].lower()}"] = sn.get_conducta(i)
+                        except Exception:
+                            pass
+                        try:
+                            data[f"salud_{hijo['nombre'].lower()}"] = sn.get_salud(i)
+                        except Exception:
+                            pass
             except Exception as e:
                 print(f"   ⚠️ SchoolNet: {e}")
 

@@ -363,6 +363,17 @@ def update_calendar_from_sources(data: Dict) -> int:
                 if add_event(fecha=fecha, descripcion=desc[:150], tipo="evento",
                            hijo="ambos", fuente="calendario_web"):
                     new_count += 1
+
+    # Desde pagos (vencimientos)
+    if "pagos" in data and isinstance(data["pagos"], dict):
+        fechas_pago = data["pagos"].get("fechas", []) or data["pagos"].get("proximos_vencimientos", [])
+        for pago in fechas_pago:
+            fecha = pago.get("fecha", "")[:10] if isinstance(pago, dict) else ""
+            monto = pago.get("monto", "") if isinstance(pago, dict) else ""
+            if fecha and fecha >= datetime.now(CHILE_TZ).strftime("%Y-%m-%d"):
+                desc = f"💰 Vencimiento pago colegio - ${monto}" if monto else "💰 Vencimiento pago colegio"
+                if add_event(fecha=fecha, descripcion=desc, tipo="evento", hijo="ambos", fuente="schoolnet_pagos"):
+                    new_count += 1
     
     # Limpiar eventos pasados
     cleanup_past_events()
