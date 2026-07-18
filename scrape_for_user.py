@@ -76,28 +76,60 @@ def main():
             if sn.login():
                 print("[SCRAPE] Login OK")
 
-                # Detectar hijos desde compañeros (que incluye info del alumno)
-                # O desde calificaciones (tiene nombre del alumno en el response)
-                for idx in range(3):  # Intentar hasta 3 alumnos
+                # Detectar hijos desde agenda (tiene cursos) y compañeros (tiene nombre alumno)
+                try:
+                    agenda = sn._get("agenda/index")
+                    cursos = agenda.get("cursos", [])
+                    # cursos es [cantidad, "5-A", "1-C", ...]
+                    cursos_list = [c for c in cursos if isinstance(c, str)]
+                    print(f"[SCRAPE] Cursos detectados: {cursos_list}")
+
+                    # Intentar obtener nombres desde la página index (tiene selector de alumnos)
+                    nombres = []
                     try:
-                        cal = sn.get_calificaciones(idx)
-                        if cal and not cal.get("error"):
-                            alumno_name = cal.get("alumno", {}).get("nombre", f"Hijo {idx+1}")
-                            curso = cal.get("alumno", {}).get("curso", "")
-                            result["hijos"].append({
-                                "nombre": alumno_name,
-                                "nombre_completo": alumno_name,
-                                "curso": curso,
-                                "profesora_jefe": "",
-                                "ciclo": "",
-                                "colegio": colegio_nombre,
-                                "schoolnet_idx": idx,
-                            })
-                            print(f"[SCRAPE] Hijo {idx}: {alumno_name} ({curso})")
-                        else:
-                            break
-                    except Exception:
-                        break
+                        index_data = sn._get("index")
+                        # Buscar alumnos en la respuesta
+                        alumnos = index_data.get("alumnos", [])
+                        if alumnos:
+                            nombres = [a.get("nombre", "") for a in alumnos]
+                        # Alternativa: puede estar en otro campo
+                        if not nombres:
+                            hijos_data = index_data.get("hijos", [])
+                            if hijos_data:
+                                nombres = [h.get("nombre", "") for h in hijos_data]
+                        if not nombres:
+                            # Buscar en cualquier lista que tenga "nombre"
+                            for key, val in index_data.items():
+                                if isinstance(val, list) and val and isinstance(val[0], dict) and "nombre" in val[0]:
+                                    nombres = [v.get("nombre", "") for v in val]
+                                    break
+                        print(f"[SCRAPE] Nombres desde index: {nombres}")
+
+                        # Extraer actividades/eventos recientes del index para calendario
+                        actividades = index_data.get("actividades", []) or index_data.get("eventos", []) or index_data.get("proximos", [])
+                        if actividades:
+                            result["actividades_recientes"] = actividades[:10]
+                            print(f"[SCRAPE] {len(actividades)} actividades recientes desde index")
+
+                        # Guardar raw del index para debug
+                        result["_index_keys"] = list(index_data.keys()) if isinstance(index_data, dict) else str(type(index_data))
+                    except Exception as e:
+                        print(f"[SCRAPE] No se pudieron obtener nombres desde index: {e}")
+
+                    for idx, curso in enumerate(cursos_list):
+                        nombre_alumno = nombres[idx] if idx < len(nombres) else f"Hijo {idx+1}"
+                        result["hijos"].append({
+                            "nombre": nombre_alumno,
+                            "nombre_completo": nombre_alumno,
+                            "curso": curso,
+                            "profesora_jefe": "",
+                            "ciclo": "",
+                            "colegio": colegio_nombre,
+                            "schoolnet_idx": idx,
+                        })
+                        print(f"[SCRAPE] Hijo {idx}: {nombre_alumno} ({curso})")
+                except Exception as e:
+                    print(f"[SCRAPE] Error detectando hijos: {e}")
 
                 # Extraprogramáticas
                 try:
