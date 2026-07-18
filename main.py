@@ -400,6 +400,7 @@ def ingest_for_user(user_cfg: dict) -> dict:
     """Ejecutar ingesta para un usuario según su config."""
     user_id = user_cfg["id"]
     data = {}
+    connection_errors = []  # Alertas de fuentes que fallaron
 
     # Si tiene colegio con SchoolNet (Sagrado Corazón u otro Colegium)
     colegio = user_cfg.get("colegio", {})
