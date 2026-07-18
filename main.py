@@ -26,6 +26,8 @@ from src.sources.gmail_source import GmailClient
 from src.sources.noticias_web import fetch_noticias
 from src.sources.extracurriculares import fetch_extracurriculares
 from src.sources.scinfo import fetch_scinfo_latest
+from src.sources.cuadernorojo import fetch_cuadernorojo
+from src.sources.oxford import fetch_oxford_all
 from src.processor.summarizer import Summarizer
 from src.calendar_store import update_calendar_from_sources, get_upcoming_events
 # from src.messenger.whatsapp import WhatsAppSender  # Replaced by Baileys
@@ -44,6 +46,7 @@ def _load_whatsapp():
     """Cargar mensajes de WhatsApp desde archivo JSON."""
     wa_file = os.path.join("data", "whatsapp_messages.json")
     monitor_file = os.path.join("data", "monitor_inputs.json")
+    attachments_dir = os.path.join("data", "attachments")
     result = {"whatsapp_5A_franco": [], "whatsapp_1C_blanca": [], "whatsapp_sharks_franco": [], "instrucciones_padres": []}
     
     if os.path.exists(wa_file):
@@ -56,6 +59,26 @@ def _load_whatsapp():
     if os.path.exists(monitor_file):
         with open(monitor_file, "r", encoding="utf-8") as f:
             result["instrucciones_padres"] = json.load(f)
+
+    # Leer contenido de PDFs adjuntos de WhatsApp
+    if os.path.exists(attachments_dir):
+        from src.utils.pdf_reader import read_pdf_from_file
+        wa_pdfs = []
+        for filename in os.listdir(attachments_dir):
+            if filename.lower().endswith(".pdf"):
+                filepath = os.path.join(attachments_dir, filename)
+                text = read_pdf_from_file(filepath, max_chars=2000)
+                if text:
+                    # Extraer grupo y timestamp del nombre: label_ts_filename.pdf
+                    parts = filename.split("_", 2)
+                    grupo = parts[0] if len(parts) > 0 else "desconocido"
+                    wa_pdfs.append({
+                        "grupo": grupo,
+                        "filename": parts[2] if len(parts) > 2 else filename,
+                        "contenido": text,
+                    })
+        if wa_pdfs:
+            result["whatsapp_pdfs"] = wa_pdfs
     
     return result
 
@@ -73,8 +96,8 @@ def ingest_all() -> dict:
     if os.path.exists(state_file):
         days_back = 1  # Producción: solo ayer
     else:
-        days_back = 7  # Primera vez: última semana
-    print(f"   Modo: {'primera vez (7 días)' if days_back == 7 else 'diario (1 día)'}")
+        days_back = 30  # Primera vez: último mes
+    print(f"   Modo: {'primera vez (30 días)' if days_back == 30 else 'diario (1 día)'}")
 
     # 1. Calendario evaluaciones (siempre 14 días adelante)
     print("\n📅 Calendario evaluaciones...")
@@ -139,9 +162,10 @@ def ingest_all() -> dict:
             os.getenv("GMAIL_TOKEN_FILE", "token.json"),
         )
         gmail.authenticate()
-        # Emails siempre 7 días (los avisos llegan con anticipación)
-        data["emails"] = gmail.get_school_emails(days=7)
-        print(f"   ✅ {len(data['emails'])} correos")
+        # Primera vez: 30 días. Después: 3 días
+        gmail_days = days_back if days_back > 3 else 3
+        data["emails"] = gmail.get_school_emails(days=gmail_days)
+        print(f"   ✅ {len(data['emails'])} correos ({gmail_days} días)")
     except Exception as e:
         print(f"   ❌ Error Gmail: {e}")
         data["emails"] = []
@@ -181,16 +205,104 @@ def ingest_all() -> dict:
     return data
 
 
-def generate_and_send(mode: str, data: dict, is_weekly: bool = False):
+def ingest_oscar() -> dict:
+    """Recopila datos de las fuentes de Oscar (Oxford School + Acuarela Montessori)."""
+    data = {}
+    today = datetime.now().strftime("%Y-%m-%d")
+    print(f"\n{'='*50}")
+    print(f"INGESTA OSCAR - {today}")
+    print(f"{'='*50}")
+
+    # Cargar config de Oscar
+    users_file = os.path.join("config", "users.json")
+    if not os.path.exists(users_file):
+        print("   ❌ No se encontró config/users.json")
+        return data
+
+    with open(users_file, "r", encoding="utf-8") as f:
+        users = json.load(f)
+    oscar_cfg = next((u for u in users if u["id"] == "oscar_ardiles"), None)
+    if not oscar_cfg:
+        print("   ❌ No se encontró config de Oscar")
+        return data
+
+    # 1. Oxford School (Esperanza) - RSS + PDFs
+    print("\n🏫 Oxford School (Esperanza)...")
+    try:
+        esperanza = next((h for h in oscar_cfg["hijos"] if h["nombre"] == "Esperanza"), {})
+        oxford_data = fetch_oxford_all(curso=esperanza.get("curso", ""))
+        data["oxford_noticias"] = oxford_data["noticias"]
+        data["oxford_pdfs"] = oxford_data["pdfs"]
+    except Exception as e:
+        print(f"   ❌ Error Oxford: {e}")
+        data["oxford_noticias"] = []
+
+    # 2. Cuaderno Rojo / Acuarela Montessori (Simón)
+    print("\n📕 Cuaderno Rojo - Acuarela Montessori (Simón)...")
+    try:
+        acuarela_cfg = next(
+            (c for c in oscar_cfg.get("colegios", []) if "Acuarela" in c["nombre"]),
+            None
+        )
+        if acuarela_cfg and acuarela_cfg.get("plataforma_notas"):
+            pn = acuarela_cfg["plataforma_notas"]
+            cr_result = fetch_cuadernorojo(pn["user"], pn["pass"], max_comunicados=5)
+            if cr_result["login_ok"]:
+                data["cuadernorojo_comunicados"] = cr_result["comunicados"]
+                print(f"   ✅ {len(cr_result['comunicados'])} comunicados")
+            else:
+                print("   ❌ Login Cuaderno Rojo falló")
+                data["cuadernorojo_comunicados"] = []
+        else:
+            print("   ⚠️ Sin credenciales Cuaderno Rojo")
+    except Exception as e:
+        print(f"   ❌ Error Cuaderno Rojo: {e}")
+        data["cuadernorojo_comunicados"] = []
+
+    # 3. Gmail de Oscar (ambos colegios)
+    print("\n📧 Gmail Oscar...")
+    try:
+        gmail_cfg = oscar_cfg.get("gmail", {})
+        creds_file = gmail_cfg.get("credentials_file", "")
+        if creds_file and os.path.exists(creds_file):
+            for account in gmail_cfg.get("accounts", []):
+                token_file = account.get("token_file", "")
+                if token_file and os.path.exists(token_file):
+                    gmail = GmailClient(creds_file, token_file)
+                    gmail.authenticate()
+                    # Filtrar por dominios del colegio
+                    from src.sources.gmail_source import SCHOOL_DOMAINS
+                    original_domains = SCHOOL_DOMAINS[:]
+                    SCHOOL_DOMAINS.clear()
+                    SCHOOL_DOMAINS.extend(account.get("school_domains", []))
+
+                    emails = gmail.get_school_emails(days=7)
+                    hijo = account.get("hijo", "")
+                    key = f"emails_{hijo.lower()}"
+                    data[key] = emails
+                    print(f"   ✅ {len(emails)} emails ({hijo})")
+
+                    SCHOOL_DOMAINS.clear()
+                    SCHOOL_DOMAINS.extend(original_domains)
+        else:
+            print("   ⚠️ Sin credenciales Gmail")
+    except Exception as e:
+        print(f"   ❌ Error Gmail: {e}")
+
+    return data
+
+
+def generate_and_send(mode: str, data: dict, is_weekly: bool = False,
+                     user_id: str = "pablo", user_cfg: dict = None):
     """Genera resumen con Claude y envía por WhatsApp."""
     
     print(f"\n{'='*50}")
-    print(f"RESUMEN ({mode}{' - SEMANAL' if is_weekly else ''})")
+    print(f"RESUMEN ({mode}{' - SEMANAL' if is_weekly else ''}) - {user_id}")
     print(f"{'='*50}")
 
     # Generar resumen
     print("\n🤖 Generando resumen con Claude...")
-    summarizer = Summarizer(os.getenv("ANTHROPIC_API_KEY"))
+    summarizer = Summarizer(os.getenv("ANTHROPIC_API_KEY"), user_cfg=user_cfg)
     
     if mode == "morning":
         message = summarizer.generate_morning_briefing(data, is_weekly=is_weekly)
@@ -204,15 +316,16 @@ def generate_and_send(mode: str, data: dict, is_weekly: bool = False):
 
     # Guardar mensaje para envío por WhatsApp
     os.makedirs("data", exist_ok=True)
-    msg_file = os.path.join("data", "mensaje_enviar.json")
+    msg_file = os.path.join("data", f"mensaje_enviar_{user_id}.json")
     with open(msg_file, "w", encoding="utf-8") as f:
-        json.dump({"mensaje": message, "mode": mode}, f, ensure_ascii=False)
+        json.dump({"mensaje": message, "mode": mode, "user_id": user_id}, f, ensure_ascii=False)
 
-    # Enviar por WhatsApp via Node.js
+    # Enviar por WhatsApp via Node.js (Baileys en EC2)
     print("\n📱 Enviando por WhatsApp...")
     import subprocess
+    send_script = "send_whatsapp.js"  # En EC2 es el de Baileys
     result = subprocess.run(
-        ["node", "send_whatsapp.js"],
+        ["node", send_script, user_id],
         capture_output=True, text=True, timeout=60
     )
     if result.returncode == 0:
@@ -223,6 +336,185 @@ def generate_and_send(mode: str, data: dict, is_weekly: bool = False):
     return message
 
 
+MAX_USERS_PER_INSTANCE = 8
+
+
+def _load_users() -> list:
+    """Cargar lista de usuarios.
+    Lee de config/users/ (archivos individuales, sync desde S3) 
+    y de config/users.json (legacy, local).
+    """
+    users = []
+    seen_ids = set()
+
+    # 1. Archivos individuales (desde S3 via sync)
+    users_dir = os.path.join("config", "users")
+    if os.path.isdir(users_dir):
+        for filename in os.listdir(users_dir):
+            if filename.endswith(".json"):
+                filepath = os.path.join(users_dir, filename)
+                try:
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        user = json.load(f)
+                    if user.get("id") and user["id"] not in seen_ids:
+                        users.append(user)
+                        seen_ids.add(user["id"])
+                except Exception as e:
+                    print(f"   ⚠️ Error leyendo {filename}: {e}")
+
+    # 2. Legacy: config/users.json (para usuarios que no vienen de la landing)
+    users_file = os.path.join("config", "users.json")
+    if os.path.exists(users_file):
+        try:
+            with open(users_file, "r", encoding="utf-8") as f:
+                legacy_users = json.load(f)
+            for user in legacy_users:
+                if user.get("id") and user["id"] not in seen_ids:
+                    users.append(user)
+                    seen_ids.add(user["id"])
+        except Exception as e:
+            print(f"   ⚠️ Error leyendo users.json: {e}")
+
+    return users
+
+
+def _check_capacity(users: list):
+    """Verificar que no se exceda la capacidad de la instancia."""
+    if len(users) > MAX_USERS_PER_INSTANCE:
+        print(f"\n🚨🚨🚨 ALERTA: {len(users)} usuarios excede el máximo de {MAX_USERS_PER_INSTANCE} por instancia!")
+        print(f"   Crear una nueva instancia EC2 para los usuarios adicionales.")
+        print(f"   Usuarios actuales: {[u['id'] for u in users]}")
+        # Enviar alerta por WhatsApp a admin (Pablo)
+        try:
+            alert_file = os.path.join("data", "mensaje_enviar_pablo.json")
+            alert_msg = f"🚨 ALERTA MONITOR: {len(users)} usuarios registrados, máximo es {MAX_USERS_PER_INSTANCE}. Crear nueva instancia EC2."
+            with open(alert_file, "w", encoding="utf-8") as f:
+                json.dump({"mensaje": alert_msg, "mode": "alert", "user_id": "pablo"}, f, ensure_ascii=False)
+            import subprocess
+            subprocess.run(["node", "send_whatsapp.js", "pablo"], capture_output=True, text=True, timeout=60)
+        except Exception:
+            pass
+
+
+def ingest_for_user(user_cfg: dict) -> dict:
+    """Ejecutar ingesta para un usuario según su config."""
+    user_id = user_cfg["id"]
+    data = {}
+
+    # Si tiene colegio con SchoolNet (Sagrado Corazón u otro Colegium)
+    colegio = user_cfg.get("colegio", {})
+    if not colegio:
+        # Multi-colegio (como Oscar)
+        colegios = user_cfg.get("colegios", [])
+        for col in colegios:
+            if col.get("plataforma_notas"):
+                pn = col["plataforma_notas"]
+                if "cuadernorojo" in pn.get("url", "").lower():
+                    try:
+                        cr_result = fetch_cuadernorojo(pn["user"], pn["pass"], max_comunicados=5)
+                        if cr_result["login_ok"]:
+                            data["cuadernorojo_comunicados"] = cr_result["comunicados"]
+                    except Exception as e:
+                        print(f"   ⚠️ Cuaderno Rojo: {e}")
+            if col.get("web_url") and "oxford" in col.get("nombre", "").lower():
+                try:
+                    hijo = next((h for h in user_cfg.get("hijos", []) if h.get("colegio") == col["nombre"]), {})
+                    oxford_data = fetch_oxford_all(curso=hijo.get("curso", ""))
+                    data["oxford_noticias"] = oxford_data["noticias"]
+                except Exception as e:
+                    print(f"   ⚠️ Oxford: {e}")
+    else:
+        # Colegio único con SchoolNet
+        sn_user = colegio.get("schoolnet_user", "")
+        sn_pass = colegio.get("schoolnet_pass", "")
+        if sn_user and sn_pass:
+            try:
+                sn = SchoolNetClient(sn_user, sn_pass)
+                if sn.login():
+                    data["comunicaciones"] = sn.get_comunicaciones()
+                    hijos = user_cfg.get("hijos", [])
+                    for i, hijo in enumerate(hijos):
+                        data[f"calificaciones_{hijo['nombre'].lower()}"] = sn.get_calificaciones(i)
+                    data["asistencia"] = sn.get_asistencia(0)
+                    data["pagos"] = sn.get_pagos()
+                    data["companeros"] = sn.get_companeros(0)
+            except Exception as e:
+                print(f"   ⚠️ SchoolNet: {e}")
+
+        # Calendario (API pública del colegio)
+        cal_url = colegio.get("calendario_url", "")
+        if cal_url:
+            try:
+                categorias = [h.get("categoria_calendario", "") for h in user_cfg.get("hijos", []) if h.get("categoria_calendario")]
+                if categorias:
+                    data["calendario"] = fetch_evaluaciones(categorias)
+            except Exception as e:
+                print(f"   ⚠️ Calendario: {e}")
+
+        # SC Info (si es Sagrado Corazón)
+        if colegio.get("scinfo_url"):
+            try:
+                data["scinfo"] = fetch_scinfo_latest()
+            except Exception as e:
+                print(f"   ⚠️ SC Info: {e}")
+
+    # Gmail
+    gmail_cfg = user_cfg.get("gmail", {})
+    if isinstance(gmail_cfg, dict) and gmail_cfg.get("accounts"):
+        # Multi-account (Oscar)
+        creds_file = gmail_cfg.get("credentials_file", "")
+        for account in gmail_cfg.get("accounts", []):
+            token_file = account.get("token_file", "")
+            if token_file and os.path.exists(token_file) and creds_file and os.path.exists(creds_file):
+                try:
+                    gmail = GmailClient(creds_file, token_file)
+                    gmail.authenticate()
+                    from src.sources.gmail_source import SCHOOL_DOMAINS
+                    original = SCHOOL_DOMAINS[:]
+                    SCHOOL_DOMAINS.clear()
+                    SCHOOL_DOMAINS.extend(account.get("school_domains", []))
+                    data[f"emails_{account.get('hijo', 'general').lower()}"] = gmail.get_school_emails(days=7)
+                    SCHOOL_DOMAINS.clear()
+                    SCHOOL_DOMAINS.extend(original)
+                except Exception as e:
+                    print(f"   ⚠️ Gmail: {e}")
+    elif isinstance(gmail_cfg, dict):
+        # Single account (Pablo, Kevin)
+        creds_file = gmail_cfg.get("credentials_file", "credentials.json")
+        token_file = gmail_cfg.get("token_file", "token.json")
+        if os.path.exists(creds_file) and os.path.exists(token_file):
+            try:
+                gmail = GmailClient(creds_file, token_file)
+                gmail.authenticate()
+                data["emails"] = gmail.get_school_emails(days=7)
+            except Exception as e:
+                print(f"   ⚠️ Gmail: {e}")
+
+    # WhatsApp messages (del archivo compartido)
+    wa_cfg = user_cfg.get("whatsapp", {})
+    wa_file = os.path.join("data", "whatsapp_messages.json")
+    if os.path.exists(wa_file):
+        with open(wa_file, "r", encoding="utf-8") as f:
+            all_wa = json.load(f)
+        for group_id, label in wa_cfg.get("grupos_lectura", {}).items():
+            if label in all_wa:
+                data[f"whatsapp_{label}"] = all_wa[label]
+
+    # Monitor inputs (instrucciones de los padres)
+    monitor_file = os.path.join("data", f"monitor_inputs_{user_id}.json")
+    if os.path.exists(monitor_file):
+        with open(monitor_file, "r", encoding="utf-8") as f:
+            data["instrucciones_padres"] = json.load(f)
+    elif os.path.exists(os.path.join("data", "monitor_inputs.json")) and user_id == "pablo_ardiles":
+        with open(os.path.join("data", "monitor_inputs.json"), "r", encoding="utf-8") as f:
+            data["instrucciones_padres"] = json.load(f)
+
+    # Horarios
+    data["horarios"] = _load_horarios()
+
+    return data
+
+
 def main():
     if len(sys.argv) < 2:
         print("Uso: python main.py [morning|evening|ingest|test]")
@@ -230,9 +522,17 @@ def main():
 
     mode = sys.argv[1].lower()
 
+    # Cargar usuarios
+    users = _load_users()
+    if not users:
+        print("❌ No hay usuarios en config/users.json")
+        sys.exit(1)
+
+    # Check capacidad
+    _check_capacity(users)
+
     if mode == "ingest":
         data = ingest_all()
-        # Guardar en archivo local
         output_file = f"data/ingesta_{datetime.now().strftime('%Y%m%d_%H%M')}.json"
         os.makedirs("data", exist_ok=True)
         with open(output_file, "w", encoding="utf-8") as f:
@@ -240,33 +540,50 @@ def main():
         print(f"\n💾 Datos guardados en {output_file}")
 
     elif mode in ("morning", "evening"):
-        data = ingest_all()
-        # Agregar horarios y WhatsApp
-        data["horarios"] = _load_horarios()
-        data.update(_load_whatsapp())
-        
-        # Determinar si es resumen semanal (domingo PM)
         today = datetime.now(CHILE_TZ)
-        is_weekly = (today.weekday() == 6 and mode == "evening")  # Domingo PM
-        
-        if is_weekly:
-            # Domingo PM: resumen completo de la semana que viene
-            print("\n📅 RESUMEN SEMANAL (domingo PM)")
-            generate_and_send(mode, data, is_weekly=True)
-        else:
-            # Otros días: solo enviar si hay algo relevante para HOY/MAÑANA
-            generate_and_send(mode, data, is_weekly=False)
+        is_weekly = (today.weekday() == 6 and mode == "evening")
+
+        # Si se pasa un user_id específico (para welcome message)
+        if len(sys.argv) > 2:
+            target_user = sys.argv[2]
+            user_cfg = next((u for u in users if u["id"] == target_user), None)
+            if user_cfg:
+                print(f"\n{'🟡' * 25}")
+                print(f"USUARIO: {user_cfg['nombre']} (individual)")
+                print(f"{'🟡' * 25}")
+                data = ingest_for_user(user_cfg)
+                if data:
+                    generate_and_send(mode, data, is_weekly=is_weekly, user_id=target_user, user_cfg=user_cfg)
+            else:
+                print(f"❌ Usuario '{target_user}' no encontrado")
+            sys.exit(0)
+
+        # Loop por todos los usuarios
+        for i, user_cfg in enumerate(users):
+            user_id = user_cfg["id"]
+            colores = ["🔵", "🟢", "🟡", "🟣", "🟠", "🔴", "⚪", "🟤"]
+            color = colores[i % len(colores)]
+            print(f"\n{color * 25}")
+            print(f"USUARIO {i+1}/{len(users)}: {user_cfg['nombre']}")
+            print(f"{color * 25}")
+
+            try:
+                data = ingest_for_user(user_cfg)
+                if data:
+                    generate_and_send(mode, data, is_weekly=is_weekly, user_id=user_id, user_cfg=user_cfg)
+                else:
+                    print(f"   ⚠️ Sin datos para {user_cfg['nombre']}, saltando")
+            except Exception as e:
+                print(f"   ❌ Error procesando {user_cfg['nombre']}: {e}")
 
     elif mode == "test":
-        data = ingest_all()
-        # Agregar horarios manuales
-        data["horarios"] = _load_horarios()
-        # Agregar WhatsApp si existe
-        data.update(_load_whatsapp())
-        # Solo genera, no envía
-        summarizer = Summarizer(os.getenv("ANTHROPIC_API_KEY"))
-        
-        if len(sys.argv) > 2 and sys.argv[2] == "evening":
+        # Test: primer usuario o especificar
+        target = sys.argv[2] if len(sys.argv) > 2 else users[0]["id"]
+        user_cfg = next((u for u in users if u["id"] == target), users[0])
+        print(f"Test para: {user_cfg['nombre']}")
+        data = ingest_for_user(user_cfg)
+        summarizer = Summarizer(os.getenv("ANTHROPIC_API_KEY"), user_cfg=user_cfg)
+        if len(sys.argv) > 3 and sys.argv[3] == "evening":
             message = summarizer.generate_evening_summary(data)
         else:
             message = summarizer.generate_morning_briefing(data)

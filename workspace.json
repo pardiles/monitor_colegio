@@ -1,0 +1,8 @@
+{
+  "search.exclude": {
+    "node_modules": true,
+    ".wwebjs_auth": true,
+    ".wwebjs_cache": true,
+    "baileys_auth": true
+  }
+}

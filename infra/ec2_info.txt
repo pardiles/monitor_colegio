@@ -1,2 +1,8 @@
-INSTANCE_ID=i-0ad4f13769d8bea94
-IP=18.222.212.121
+INSTANCE_ID=i-00d2a56f9b8078a10
+IP=18.223.149.29
+TYPE=t3.small (spot)
+DISK=16GB gp3
+REGION=us-east-2
+KEY=none (usar ec2-instance-connect)
+BAILEYS_PID=618
+WA_NUMBER=56968983699 (Pablo)

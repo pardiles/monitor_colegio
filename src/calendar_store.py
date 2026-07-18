@@ -161,9 +161,19 @@ def extract_events_from_scinfo(scinfo_content: str) -> List[Dict]:
 
 
 def extract_events_from_emails(emails: List[Dict]) -> List[Dict]:
-    """Extrae eventos con fecha de los emails."""
+    """Extrae eventos con fecha de los emails usando Claude para parsear."""
     events = []
     year = datetime.now(CHILE_TZ).year
+    
+    # Primero intento con Claude (más preciso)
+    try:
+        events = _extract_events_with_ai(emails)
+        if events:
+            return events
+    except Exception as e:
+        print(f"   ⚠️ AI extraction failed: {e}, falling back to regex")
+    
+    # Fallback: regex básico
     months = {
         'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4,
         'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8,
@@ -178,14 +188,11 @@ def extract_events_from_emails(emails: List[Dict]) -> List[Dict]:
             month = months.get(match.group(2).lower(), 0)
             if month and 1 <= day <= 31:
                 fecha = f"{year}-{month:02d}-{day:02d}"
-                # Solo eventos futuros
                 if fecha >= datetime.now(CHILE_TZ).strftime("%Y-%m-%d"):
-                    # Extraer contexto alrededor de la fecha
                     start = max(0, match.start() - 50)
                     end = min(len(text), match.end() + 100)
                     context = text[start:end].strip()
                     
-                    # Determinar hijo
                     hijo = "ambos"
                     if "franco" in email.get("asunto", "").lower() or "5°" in text[start:end]:
                         hijo = "franco"
@@ -203,28 +210,151 @@ def extract_events_from_emails(emails: List[Dict]) -> List[Dict]:
     return events
 
 
+def _extract_events_with_ai(emails: List[Dict]) -> List[Dict]:
+    """Usa Claude para extraer eventos futuros de los emails."""
+    import anthropic
+    
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return []
+    
+    # Preparar texto de emails (solo los que parecen tener eventos)
+    relevant_emails = []
+    event_keywords = ['entrevista', 'reunión', 'reunion', 'prueba', 'evaluación',
+                      'salida', 'actividad', 'feriado', 'sin clases', 'jornada',
+                      'taller', 'citación', 'presentación', 'plazo', 'fecha']
+    
+    for email in emails:
+        text = (email.get("asunto", "") + " " + email.get("body", "")[:500]).lower()
+        if any(kw in text for kw in event_keywords):
+            relevant_emails.append(email)
+    
+    if not relevant_emails:
+        return []
+    
+    # Armar prompt
+    emails_text = ""
+    for e in relevant_emails[:10]:
+        emails_text += f"\n---\nAsunto: {e.get('asunto', '')}\nFecha email: {e.get('fecha', '')}\nContenido: {e.get('body', '')[:600]}\n"
+    
+    today = datetime.now(CHILE_TZ).strftime("%Y-%m-%d")
+    
+    prompt = f"""Analiza estos emails del colegio y extrae TODOS los eventos futuros (fecha >= {today}).
+Para cada evento devuelve un JSON con: fecha (YYYY-MM-DD), descripcion (corta), hora (HH:MM o null), lugar (o null), hijo (franco/blanca/ambos), tipo (reunion/evaluacion/sin_clases/evento/entrega).
+
+Emails:
+{emails_text}
+
+Responde SOLO con un array JSON. Si no hay eventos futuros, responde [].
+Ejemplo: [{{"fecha":"2026-07-22","descripcion":"Entrevista apoderados Franco 5°A","hora":"10:30","lugar":"Oficina Miss Valentina","hijo":"franco","tipo":"reunion"}}]"""
+
+    client = anthropic.Anthropic(api_key=api_key)
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=1000,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    
+    result_text = response.content[0].text.strip()
+    
+    # Extraer JSON del response
+    json_match = re.search(r'\[.*\]', result_text, re.DOTALL)
+    if json_match:
+        events_raw = json.loads(json_match.group())
+        events = []
+        for ev in events_raw:
+            events.append({
+                "fecha": ev.get("fecha", ""),
+                "descripcion": ev.get("descripcion", "")[:150],
+                "tipo": ev.get("tipo", "evento"),
+                "hijo": ev.get("hijo", "ambos"),
+                "fuente": "email",
+                "hora": ev.get("hora"),
+                "lugar": ev.get("lugar"),
+            })
+        return events
+    
+    return []
+
+
 def update_calendar_from_sources(data: Dict) -> int:
     """
     Actualiza el calendario persistente con datos de todas las fuentes.
+    Usa Claude para analizar TODAS las fuentes y extraer eventos futuros.
     Returns: número de eventos nuevos agregados.
     """
     new_count = 0
     
-    # Desde SC Info
-    if "scinfo" in data and data["scinfo"].get("contenido"):
-        events = extract_events_from_scinfo(data["scinfo"]["contenido"])
-        for ev in events:
-            if add_event(**ev):
-                new_count += 1
+    # Recopilar todo el texto de todas las fuentes
+    all_texts = []
     
-    # Desde emails
+    # Emails
     if "emails" in data and data["emails"]:
-        events = extract_events_from_emails(data["emails"])
-        for ev in events:
-            if add_event(**ev):
-                new_count += 1
+        for e in data["emails"]:
+            all_texts.append({
+                "fuente": "email",
+                "asunto": e.get("asunto", ""),
+                "contenido": e.get("body", "")[:600],
+            })
     
-    # Desde calendario web del colegio
+    # SC Info
+    if "scinfo" in data and data["scinfo"].get("contenido"):
+        all_texts.append({
+            "fuente": "scinfo",
+            "asunto": "SC Info " + data["scinfo"].get("fecha", ""),
+            "contenido": data["scinfo"]["contenido"][:2000],
+        })
+    
+    # Comunicaciones SchoolNet
+    if "comunicaciones" in data:
+        coms = data["comunicaciones"].get("comunicaciones", [])
+        for c in coms[:5]:
+            all_texts.append({
+                "fuente": "schoolnet",
+                "asunto": c.get("asunto", ""),
+                "contenido": c.get("asunto", ""),
+            })
+    
+    # Cuaderno Rojo
+    if "cuadernorojo_comunicados" in data:
+        for c in data["cuadernorojo_comunicados"][:5]:
+            all_texts.append({
+                "fuente": "cuadernorojo",
+                "asunto": c.get("asunto", ""),
+                "contenido": c.get("contenido", "")[:400],
+            })
+    
+    # WhatsApp grupos
+    for key, value in data.items():
+        if key.startswith("whatsapp_") and isinstance(value, list):
+            # Tomar últimos mensajes relevantes
+            for msg in value[-20:]:
+                body = msg.get("body", "")
+                if len(body) > 20:  # Solo mensajes con contenido
+                    all_texts.append({
+                        "fuente": f"whatsapp ({key})",
+                        "asunto": f"Mensaje de {msg.get('from', '')}",
+                        "contenido": body[:300],
+                    })
+    
+    # Extraer eventos con Claude de todas las fuentes
+    if all_texts:
+        try:
+            events = _extract_events_with_ai_all(all_texts)
+            for ev in events:
+                if add_event(**ev):
+                    new_count += 1
+                    print(f"   📅 Nuevo evento: {ev['fecha']} - {ev['descripcion'][:50]}")
+        except Exception as e:
+            print(f"   ⚠️ Error extrayendo eventos con AI: {e}")
+            # Fallback: regex en emails
+            if "emails" in data and data["emails"]:
+                events = extract_events_from_emails(data["emails"])
+                for ev in events:
+                    if add_event(**ev):
+                        new_count += 1
+    
+    # Desde calendario web del colegio (API directa, no necesita AI)
     if "calendario" in data:
         for ev in data["calendario"]:
             fecha = ev.get("start", "")[:10]
@@ -238,6 +368,71 @@ def update_calendar_from_sources(data: Dict) -> int:
     cleanup_past_events()
     
     return new_count
+
+
+def _extract_events_with_ai_all(texts: List[Dict]) -> List[Dict]:
+    """Usa Claude para extraer eventos futuros de TODAS las fuentes."""
+    import anthropic
+    
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return []
+    
+    # Armar texto consolidado
+    content = ""
+    for t in texts[:30]:  # Max 30 items para no exceder contexto
+        content += f"\n[{t['fuente']}] {t['asunto']}\n{t['contenido']}\n---\n"
+    
+    if not content.strip():
+        return []
+    
+    today = datetime.now(CHILE_TZ).strftime("%Y-%m-%d")
+    
+    prompt = f"""Analiza estas comunicaciones del colegio y extrae TODOS los eventos futuros (fecha >= {today}).
+Incluye: reuniones, entrevistas, pruebas, actividades, salidas anticipadas, días sin clases, plazos, inscripciones, cumpleaños invitados, partidos, etc.
+
+Comunicaciones:
+{content}
+
+Para cada evento devuelve un JSON con:
+- fecha: YYYY-MM-DD
+- descripcion: texto corto descriptivo
+- hora: HH:MM (o null si no se indica)
+- lugar: texto (o null)
+- hijo: "franco"/"blanca"/"ambos" (o el nombre del hijo que aplique)
+- tipo: "reunion"/"evaluacion"/"sin_clases"/"evento"/"entrega"/"extraprogramatica"
+
+Responde SOLO con un array JSON. Si no hay eventos futuros, responde [].
+No incluir eventos que ya pasaron. Año actual: {datetime.now(CHILE_TZ).year}."""
+
+    client = anthropic.Anthropic(api_key=api_key)
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=2000,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    
+    result_text = response.content[0].text.strip()
+    
+    # Extraer JSON
+    json_match = re.search(r'\[.*\]', result_text, re.DOTALL)
+    if json_match:
+        events_raw = json.loads(json_match.group())
+        events = []
+        for ev in events_raw:
+            if ev.get("fecha"):
+                events.append({
+                    "fecha": ev["fecha"],
+                    "descripcion": ev.get("descripcion", "")[:150],
+                    "tipo": ev.get("tipo", "evento"),
+                    "hijo": ev.get("hijo", "ambos"),
+                    "fuente": "ai_extraction",
+                    "hora": ev.get("hora"),
+                    "lugar": ev.get("lugar"),
+                })
+        return events
+    
+    return []
 
 
 def _similar(text1: str, text2: str) -> bool:

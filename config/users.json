@@ -1,0 +1,183 @@
+[
+  {
+    "id": "pablo_ardiles",
+    "nombre": "Pablo Ardiles",
+    "hijos": [
+      {
+        "nombre": "Franco",
+        "nombre_completo": "FRANCO ANTONIO ARDILES VALENZUELA",
+        "curso": "5-A",
+        "categoria_calendario": "5",
+        "profesora_jefe": "María Valentina Mozó Laso",
+        "ciclo": "Ciclo Básico (3° a 5°)"
+      },
+      {
+        "nombre": "Blanca",
+        "nombre_completo": "BLANCA FERNANDA ARDILES VALENZUELA",
+        "curso": "1-C",
+        "categoria_calendario": "1",
+        "profesora_jefe": "Andrea Alejandra Ortega García",
+        "ciclo": "Ciclo Inicial (PK a 2°)"
+      }
+    ],
+    "colegio": {
+      "nombre": "Colegio del Sagrado Corazón Apoquindo",
+      "calendario_url": "https://colegiodelsagradocorazon.cl/evaluation/calendar.json",
+      "scinfo_url": "https://colegiodelsagradocorazon.cl/scinfos",
+      "schoolnet_user": "avalenzuela143",
+      "schoolnet_pass": "2776523xX#"
+    },
+    "gmail": {
+      "credentials_file": "config/credentials_pablo.json",
+      "token_file": "config/tokens/pablo_token.json",
+      "school_domains": ["colegiodelsagradocorazon.cl", "colegium.com"]
+    },
+    "whatsapp": {
+      "phone": "56968983699",
+      "auth_folder": "baileys_auth/pablo",
+      "grupos_lectura": {
+        "120363022899821958@g.us": "5A_franco",
+        "120363407876876956@g.us": "1C_blanca",
+        "120363024586413625@g.us": "sharks_franco"
+      },
+      "grupo_envio": "120363409985436264@g.us",
+      "grupo_monitor": "120363409985436264@g.us"
+    },
+    "extraprogramaticas": [
+      {"nombre": "Ajedrez", "dia": "LUN", "horario": "16:30-17:30", "hijo": "Franco", "hora_salida_real": "17:30"},
+      {"nombre": "Escalada I", "dia": "LUN", "horario": "16:15-17:30", "hijo": "Blanca", "hora_salida_real": "17:30"},
+      {"nombre": "Mini chef II", "dia": "MIE", "horario": "13:20-15:15", "hijo": "Blanca", "hora_salida_real": "15:15"},
+      {"nombre": "Polideportivo", "dia": "VIE", "horario": "15:35-16:55", "hijo": "Blanca", "hora_salida_real": "16:55"}
+    ],
+    "regimen": {
+      "tipo": "semana_por_medio",
+      "padre": "Pablo",
+      "madre": "Angela",
+      "semana_actual": "angela",
+      "semana_referencia": "2026-07-14",
+      "detalle_padre": "Martes PM (busca al colegio) → Lunes AM (deja en el colegio)",
+      "detalle_madre": "Lunes PM → Martes AM siguiente (deja en el colegio)",
+      "vacaciones_invierno": "1ra semana Pablo, 2da semana Angela",
+      "vacaciones_verano": "Régimen base hasta 31 dic. Enero: 2 semanas Pablo, 2 Angela. Febrero: 2 Pablo, 2 Angela.",
+      "fiestas_patrias_2026": "Angela",
+      "navidad_2026": "Pablo",
+      "año_nuevo_2026": "Angela"
+    },
+    "pagos": {
+      "pension": "Pablo paga antes del día 5 de cada mes (pensión + $100.000 CLP Liliana Vargas)",
+      "colegio": "Pablo paga todo del Sagrado Corazón (cuotas, casino)",
+      "sharks": "Angela paga todo del grupo Sharks (fútbol Franco)",
+      "cumpleaños": "Quien tiene los niños esa semana compra el regalo"
+    },
+    "alianzas_2026": {
+      "Franco": {"alianza": "A", "pais": "México", "colores": "naranjo, morado, fucsia"},
+      "Blanca": {"alianza": "C", "pais": "Brasil", "colores": "verde, amarillo, azul"}
+    }
+  },
+  {
+    "id": "oscar_ardiles",
+    "nombre": "Oscar Ardiles",
+    "telefono": "+56975195836",
+    "hijos": [
+      {
+        "nombre": "Esperanza",
+        "nombre_completo": "Esperanza Ardiles Cerda",
+        "curso": "4-A",
+        "categoria_calendario": "",
+        "profesora_jefe": "",
+        "ciclo": "",
+        "colegio": "Oxford School"
+      },
+      {
+        "nombre": "Simón",
+        "nombre_completo": "Simón Ardiles Cerda",
+        "curso": "6",
+        "categoria_calendario": "",
+        "profesora_jefe": "",
+        "ciclo": "",
+        "colegio": "Acuarela Montessori"
+      }
+    ],
+    "colegios": [
+      {
+        "nombre": "Oxford School",
+        "web_url": "https://www.oxfordschool.cl/",
+        "calendario_url": null,
+        "scinfo_url": null,
+        "schoolnet_user": null,
+        "schoolnet_pass": null,
+        "hijo": "Esperanza"
+      },
+      {
+        "nombre": "Acuarela Montessori",
+        "web_url": "https://acuarelamontessori.cl/",
+        "calendario_url": null,
+        "scinfo_url": null,
+        "schoolnet_user": null,
+        "schoolnet_pass": null,
+        "plataforma_notas": {
+          "url": "https://www.cuadernorojo.com/",
+          "user": "alediferencial@gmail.com",
+          "pass": "Hola2244"
+        },
+        "hijo": "Simón"
+      }
+    ],
+    "gmail": {
+      "accounts": [
+        {
+          "email": "dr.ardiles@gmail.com",
+          "token_file": "config/tokens/oscar_gmail_token.json",
+          "school_domains": ["oxfordschool.cl", "acuarelamontessori.cl"],
+          "hijo": "ambos",
+          "nota": "Oscar reenvía emails de ardilescerda@oxfordschool.cl a dr.ardiles@gmail.com"
+        }
+      ],
+      "credentials_file": "config/credentials_oscar.json"
+    },
+    "whatsapp": {
+      "phone": "56975195836",
+      "auth_folder": "baileys_auth/oscar",
+      "grupos_lectura": {
+        "_pendiente_familias_acuarela": "acuarela_simon",
+        "_pendiente_martin_pescador": "martin_pescador_simon",
+        "_pendiente_4basico_a": "4A_esperanza"
+      },
+      "grupo_envio": null,
+      "grupo_monitor": null,
+      "destinatarios_monitor": ["56975195836", "56984222605"]
+    },
+    "regimen": null,
+    "extraprogramaticas": [],
+    "pagos": null
+  },
+  {
+    "id": "kevin_moir",
+    "nombre": "Kevin Moir",
+    "telefono": "+56992352602",
+    "hijos": [],
+    "colegio": {
+      "nombre": "Colegio del Sagrado Corazón Apoquindo",
+      "calendario_url": "https://colegiodelsagradocorazon.cl/evaluation/calendar.json",
+      "scinfo_url": "https://colegiodelsagradocorazon.cl/scinfos",
+      "schoolnet_user": "",
+      "schoolnet_pass": ""
+    },
+    "gmail": {
+      "credentials_file": "config/credentials_kevin.json",
+      "token_file": "config/tokens/kevin_token.json",
+      "school_domains": ["colegiodelsagradocorazon.cl", "colegium.com"]
+    },
+    "whatsapp": {
+      "phone": "56992352602",
+      "auth_folder": "baileys_auth/kevin",
+      "grupos_lectura": {},
+      "grupo_envio": null,
+      "grupo_monitor": null,
+      "destinatarios_monitor": ["56992352602"]
+    },
+    "regimen": null,
+    "extraprogramaticas": [],
+    "pagos": null
+  }
+]

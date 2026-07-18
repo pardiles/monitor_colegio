@@ -23,3 +23,7 @@ infra/*.pem
 infra/start_ec2.zip
 *.egg-info/
 samconfig.toml
+node_modules/
+.wwebjs_auth/
+.wwebjs_cache/
+baileys_auth/

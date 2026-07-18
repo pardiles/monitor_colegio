@@ -2,6 +2,7 @@
 cd /opt/monitor-colegio
 export PATH="/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 export HOME=/home/ubuntu
+export DISPLAY=:99
 
 HOUR=$(TZ='America/Santiago' date +%H)
 if [ "$HOUR" -lt 12 ]; then
@@ -19,8 +20,13 @@ fi
 
 echo "$(TZ='America/Santiago' date) - Modo: $MODE | WA: $WA_MODE" >> /var/log/monitor-colegio.log
 
+# Sync usuarios desde S3 (nuevos registros de la landing)
+aws s3 sync s3://monitor-colegio-config-669294688330/config/users/ /opt/monitor-colegio/config/users/ >> /var/log/monitor-colegio.log 2>&1
+
 node fetch_whatsapp.js $WA_MODE >> /var/log/monitor-colegio.log 2>&1
-python3 main.py $MODE >> /var/log/monitor-colegio.log 2>&1
+
+# xvfb-run para Cuaderno Rojo (Cloudflare requiere browser headed)
+xvfb-run -a python3 main.py $MODE >> /var/log/monitor-colegio.log 2>&1
 
 mkdir -p data
 date > "$STATE_FILE"

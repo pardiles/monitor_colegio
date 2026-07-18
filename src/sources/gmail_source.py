@@ -1,6 +1,7 @@
 """
 Fuente: Gmail API.
 Lee correos de remitentes del colegio.
+Incluye extracción de adjuntos PDF.
 """
 
 import os
@@ -12,6 +13,8 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+
+from src.utils.pdf_reader import read_pdf_from_bytes
 
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
@@ -97,6 +100,9 @@ class GmailClient:
                 "asunto": headers.get("Subject", ""),
                 "snippet": detail.get("snippet", ""),
                 "body": self._extract_body(detail["payload"]),
+                "adjuntos_pdf": self._extract_pdf_attachments(
+                    msg["id"], detail["payload"]
+                ),
             })
 
         return emails
@@ -148,3 +154,63 @@ class GmailClient:
             body = re.sub(r"\s+", " ", body).strip()
 
         return body[:2000]
+
+    def _extract_pdf_attachments(self, msg_id: str, payload: Dict) -> List[Dict]:
+        """
+        Descarga y extrae texto de adjuntos PDF de un email.
+
+        Returns:
+            Lista de dicts con: filename, contenido (texto extraído)
+        """
+        pdfs = []
+        parts = payload.get("parts", [])
+
+        for part in parts:
+            mime = part.get("mimeType", "")
+            filename = part.get("filename", "")
+
+            if mime == "application/pdf" and filename:
+                attachment_id = part.get("body", {}).get("attachmentId")
+                if not attachment_id:
+                    continue
+
+                try:
+                    att = self.service.users().messages().attachments().get(
+                        userId="me", messageId=msg_id, id=attachment_id
+                    ).execute()
+
+                    data = base64.urlsafe_b64decode(att["data"])
+                    text = read_pdf_from_bytes(data, max_chars=3000)
+
+                    if text:
+                        pdfs.append({
+                            "filename": filename,
+                            "contenido": text,
+                        })
+                except Exception as e:
+                    print(f"   ⚠️ Error descargando adjunto {filename}: {e}")
+
+            # Buscar en partes anidadas (multipart/mixed)
+            if "parts" in part:
+                for subpart in part["parts"]:
+                    sub_mime = subpart.get("mimeType", "")
+                    sub_filename = subpart.get("filename", "")
+                    if sub_mime == "application/pdf" and sub_filename:
+                        sub_att_id = subpart.get("body", {}).get("attachmentId")
+                        if not sub_att_id:
+                            continue
+                        try:
+                            att = self.service.users().messages().attachments().get(
+                                userId="me", messageId=msg_id, id=sub_att_id
+                            ).execute()
+                            data = base64.urlsafe_b64decode(att["data"])
+                            text = read_pdf_from_bytes(data, max_chars=3000)
+                            if text:
+                                pdfs.append({
+                                    "filename": sub_filename,
+                                    "contenido": text,
+                                })
+                        except Exception:
+                            pass
+
+        return pdfs[:3]  # Máximo 3 PDFs por email

@@ -1,0 +1,204 @@
+/**
+ * Vinculación de WhatsApp para un usuario nuevo.
+ * Genera QR, lo sube a S3, y espera a que el usuario escanee.
+ * 
+ * Uso: node vincular_usuario.js <user_id>
+ * 
+ * Flujo:
+ * 1. Inicia sesión Baileys para el usuario
+ * 2. Genera QR → lo convierte a PNG → lo sube a S3
+ * 3. Cuando el usuario escanea, guarda la sesión en baileys_auth/{user_id}/
+ * 4. Lista los grupos del usuario y los sube a S3
+ * 5. Sale
+ */
+
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const fs = require('fs');
+const path = require('path');
+
+const BASE_DIR = '/opt/monitor-colegio';
+const S3_BUCKET = 'monitor-colegio-config-669294688330';
+const REGION = 'us-east-2';
+
+const s3 = new S3Client({ region: REGION });
+
+const userId = process.argv[2];
+if (!userId) {
+    console.error('Uso: node vincular_usuario.js <user_id>');
+    process.exit(1);
+}
+
+const authFolder = path.join(BASE_DIR, 'baileys_auth', userId);
+const qrFile = path.join('/tmp', `qr_${userId}.png`);
+
+console.log(`[${userId}] Iniciando vinculación WhatsApp...`);
+fs.mkdirSync(authFolder, { recursive: true });
+
+let qrTimeout = null;
+let connected = false;
+
+async function start() {
+    const { state, saveCreds } = await useMultiFileAuthState(authFolder);
+    const sock = makeWASocket({
+        auth: state,
+    });
+
+    sock.ev.on('creds.update', saveCreds);
+
+    sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
+
+        if (qr) {
+            console.log(`[${userId}] QR generado, subiendo a S3...`);
+            try {
+                const QRCode = require('qrcode');
+                await QRCode.toFile(qrFile, qr, { width: 300, margin: 2 });
+                // Subir a S3
+                const fileData = fs.readFileSync(qrFile);
+                await s3.send(new PutObjectCommand({
+                    Bucket: S3_BUCKET,
+                    Key: `whatsapp/qr/${userId}.png`,
+                    Body: fileData,
+                    ContentType: 'image/png',
+                }));
+                console.log(`[${userId}] QR subido a S3`);
+            } catch (e) {
+                console.error(`[${userId}] Error subiendo QR: ${e.message}`);
+            }
+
+            // Timeout: si no escanea en 2 minutos, salir
+            if (qrTimeout) clearTimeout(qrTimeout);
+            qrTimeout = setTimeout(() => {
+                if (!connected) {
+                    console.log(`[${userId}] Timeout - QR no escaneado en 2 min`);
+                    process.exit(1);
+                }
+            }, 120000);
+        }
+
+        if (connection === 'open') {
+            connected = true;
+            console.log(`[${userId}] ¡WhatsApp VINCULADO!`);
+
+            // Limpiar QR de S3
+            try {
+                await s3.send(new DeleteObjectCommand({ Bucket: S3_BUCKET, Key: `whatsapp/qr/${userId}.png` }));
+            } catch (e) {}
+
+            // Marcar como conectado en S3
+            await s3.send(new PutObjectCommand({
+                Bucket: S3_BUCKET,
+                Key: `whatsapp/sessions/${userId}/creds.json`,
+                Body: JSON.stringify({ status: 'connected', timestamp: new Date().toISOString() }),
+                ContentType: 'application/json',
+            }));
+
+            // Esperar un momento para que carguen los grupos
+            setTimeout(async () => {
+                await listGroups(sock);
+                await createMonitorGroup(sock);
+                console.log(`[${userId}] Vinculación completada. Saliendo.`);
+                process.exit(0);
+            }, 5000);
+        }
+
+        if (connection === 'close') {
+            const code = lastDisconnect?.error?.output?.statusCode;
+            if (code === DisconnectReason.loggedOut) {
+                console.log(`[${userId}] Sesión rechazada`);
+                process.exit(1);
+            }
+            if (!connected) {
+                console.log(`[${userId}] Reconectando...`);
+                setTimeout(start, 3000);
+            }
+        }
+    });
+}
+
+async function listGroups(sock) {
+    try {
+        const groups = await sock.groupFetchAllParticipating();
+        const groupList = Object.values(groups).map(g => ({
+            id: g.id,
+            name: g.subject,
+            participants: g.participants?.length || 0,
+        }));
+
+        console.log(`[${userId}] ${groupList.length} grupos encontrados:`);
+        groupList.forEach(g => console.log(`   → ${g.name} (${g.participants} participantes)`));
+
+        // Guardar en S3
+        await s3.send(new PutObjectCommand({
+            Bucket: S3_BUCKET,
+            Key: `whatsapp/groups/${userId}.json`,
+            Body: JSON.stringify(groupList, null, 2),
+            ContentType: 'application/json',
+        }));
+        console.log(`[${userId}] Grupos guardados en S3`);
+    } catch (e) {
+        console.error(`[${userId}] Error listando grupos: ${e.message}`);
+    }
+}
+
+async function createMonitorGroup(sock) {
+    try {
+        // Leer config del usuario para obtener destinatarios
+        const usersFile = path.join(BASE_DIR, 'config', 'users.json');
+        let users = [];
+        try { users = JSON.parse(fs.readFileSync(usersFile, 'utf-8')); } catch {}
+
+        // También buscar en config/users/{userId}.json (sync de S3)
+        const userFile = path.join(BASE_DIR, 'config', 'users', `${userId}.json`);
+        let userCfg = users.find(u => u.id === userId);
+        if (!userCfg && fs.existsSync(userFile)) {
+            userCfg = JSON.parse(fs.readFileSync(userFile, 'utf-8'));
+        }
+
+        if (!userCfg) {
+            console.log(`[${userId}] Sin config, no se puede crear grupo monitor`);
+            return;
+        }
+
+        // Obtener destinatarios
+        const destinatarios = (userCfg.whatsapp?.destinatarios_monitor || [])
+            .map(n => n.replace('+', '').replace(/\s/g, '') + '@s.whatsapp.net');
+
+        if (destinatarios.length === 0) {
+            console.log(`[${userId}] Sin destinatarios, saltando creación de grupo`);
+            return;
+        }
+
+        // Nombre del grupo
+        const apellido = userCfg.nombre?.split(' ').pop() || userId;
+        const groupName = `Monitor Colegio ${apellido}`;
+
+        console.log(`[${userId}] Creando grupo "${groupName}" con ${destinatarios.length} miembros...`);
+
+        const group = await sock.groupCreate(groupName, destinatarios);
+        const groupId = group.id;
+        console.log(`[${userId}] ✅ Grupo creado: ${groupId}`);
+
+        // Guardar el ID del grupo en S3
+        await s3.send(new PutObjectCommand({
+            Bucket: S3_BUCKET,
+            Key: `whatsapp/monitor_group/${userId}.json`,
+            Body: JSON.stringify({ group_id: groupId, name: groupName, created: new Date().toISOString() }),
+            ContentType: 'application/json',
+        }));
+
+        // Enviar mensaje de bienvenida al grupo
+        const welcomeMsg = `👋 ¡Bienvenido al Monitor Colegio!\n\nEste grupo te enviará resúmenes diarios:\n• 📋 7:00 AM - Lo que pasa hoy\n• 📬 20:00 - Lo nuevo del día + mañana\n\n💡 Puedes escribir acá instrucciones y el bot las tomará en cuenta:\n• "Simón no va al colegio mañana"\n• "Esperanza tiene cumpleaños viernes 17:00"\n\n📌 Tip: Fija este grupo arriba (mantén presionado → 📌) para no perderte los resúmenes.\n\nTu primer resumen llegará en unos minutos... ⏳`;
+        await sock.sendMessage(groupId, { text: welcomeMsg });
+        console.log(`[${userId}] Mensaje de bienvenida enviado al grupo`);
+
+    } catch (e) {
+        console.error(`[${userId}] Error creando grupo monitor: ${e.message}`);
+    }
+}
+
+start().catch(e => {
+    console.error(`[${userId}] Error fatal: ${e.message}`);
+    process.exit(1);
+});
