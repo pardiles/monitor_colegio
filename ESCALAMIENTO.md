@@ -50,33 +50,112 @@
 
 ## Costos proyectados
 
+### Sin proxy (riesgo medio de ban a escala)
+
 | Usuarios | Instancias | EC2 Spot | EBS | Claude Haiku | Total/mes | Por usuario |
 |---|---|---|---|---|---|---|
 | 10 | 1 | $5.62 | $1.28 | $1.00 | $7.90 | $0.79 |
 | 50 | 5 | $28 | $6.40 | $5.00 | $39 | $0.78 |
 | 100 | 10 | $56 | $12.80 | $10.00 | $79 | $0.79 |
-| 500 | 50 | $281 | $64 | $50 | $395 | $0.79 |
 | 1,000 | 100 | $562 | $128 | $100 | $790 | $0.79 |
-| 10,000 | 1,000 | $5,620 | $1,280 | $1,000 | $7,900 | $0.79 |
 
-Basado en: t3.small spot $0.0078/hr, EBS gp3 16GB $0.08/GB, Haiku ~$0.005/call × 2/día
+### Con 1 IP residencial por usuario (optimizado)
+
+Arquitectura optimizada: 100 users/instancia + proxy individual + Gemini Flash
+
+| Componente | Decisión | Costo/user/mes |
+|---|---|---|
+| EC2 Spot | t3.medium, 100 users/instancia | $0.11 |
+| EBS | 16GB compartido entre 100 users | $0.01 |
+| Proxy residencial | 1 IP estática/user, bulk ~$0.60 | $0.60 |
+| AI (Gemini Flash) | 2 calls/día × 30 | $0.02 |
+| S3 + API Gateway | negligible | $0.01 |
+| **TOTAL** | | **$0.75/user/mes** |
+
+| Usuarios | Instancias (100/inst) | EC2+EBS | Proxies ($0.60) | AI (Flash) | Total/mes | Por usuario |
+|---|---|---|---|---|---|---|
+| 100 | 1 | $12.50 | $60 | $2 | **$75** | **$0.75** |
+| 1,000 | 10 | $125 | $600 | $20 | **$745** | **$0.75** |
+| 10,000 | 100 | $1,250 | $6,000 | $200 | **$7,450** | **$0.75** |
+
+### Con 1 IP residencial cada 10 usuarios
+
+Escenario más realista: 10 sesiones WA comparten 1 IP residencial (parece una familia/oficina). Riesgo bajo de ban.
+
+**Sin negociar bulk ($1.75/IP):**
+
+| Componente | Decisión | Costo/user/mes |
+|---|---|---|
+| EC2 Spot | t3.medium, 100 users/instancia | $0.11 |
+| EBS | 16GB compartido entre 100 users | $0.01 |
+| Proxy residencial | 1 IP cada 10 users, $1.75/IP | $0.175 |
+| AI (Gemini Flash) | 2 calls/día × 30 | $0.02 |
+| S3 + API Gateway | negligible | $0.01 |
+| **TOTAL** | | **$0.33/user/mes** |
+
+| Usuarios | Total/mes |
+|---|---|
+| 100 | $33 |
+| 1,000 | $330 |
+| 10,000 | $3,300 |
+
+**Con bulk negociado ($0.60/IP, a partir de 1000+ users):**
+
+| Componente | Decisión | Costo/user/mes |
+|---|---|---|
+| EC2 Spot | t3.medium, 100 users/instancia | $0.11 |
+| EBS | 16GB compartido entre 100 users | $0.01 |
+| Proxy residencial | 1 IP cada 10 users, bulk $0.60/IP | $0.06 |
+| AI (Gemini Flash) | 2 calls/día × 30 | $0.02 |
+| S3 + API Gateway | negligible | $0.01 |
+| **TOTAL** | | **$0.21/user/mes** |
+
+| Usuarios | Total/mes |
+|---|---|
+| 1,000 | $210 |
+| 10,000 | $2,100 |
 
 ## Riesgo de ban de Meta (WhatsApp)
 
-### Nivel actual (3 users, 1 IP AWS): Riesgo BAJO
-- 1 conexión estable, sin mensajería masiva
+### Con proxy individual: Riesgo BAJO a cualquier escala
+- Cada usuario sale por una IP residencial distinta
+- Meta ve 1 sesión por IP residencial = parece un celular normal
+- No hay correlación entre usuarios
 
-### A escala (10/IP de datacenter): Riesgo MEDIO
-- 10 sesiones por IP es aceptable si son estables
-- No hacer bulk messaging (2 msgs/día/user es nada)
-- No conectar/desconectar frecuentemente
+### Implementación del proxy
+```javascript
+// wa_listener.js - cada sesión usa su propio proxy SOCKS5
+const { SocksProxyAgent } = require('socks-proxy-agent');
 
-### Mitigación si Meta aprieta: Proxy residencial
-- Agregar SOCKS5 proxy a Baileys (1 línea de config)
-- Bright Data Static Residential: ~$2/IP/mes
-- Esquema: 1 IP residencial por cada 5-10 users
-- Costo adicional para 1000 users: ~$200-400/mes
-- **Solo implementar si hay evidencia de ban, no antes**
+const proxyUrl = userCfg.proxy; // "socks5://user:pass@gate.provider.com:22225"
+const agent = proxyUrl ? new SocksProxyAgent(proxyUrl) : undefined;
+
+const sock = makeWASocket({
+    auth: state,
+    agent: agent,  // tráfico WA sale por proxy residencial
+});
+```
+
+Config por usuario:
+```json
+{
+  "id": "pablo_ardiles",
+  "proxy": "socks5://usr_pablo:xyz@gate.brightdata.com:22225"
+}
+```
+
+### Proveedores recomendados (IP estática residencial)
+| Proveedor | Precio/IP (1 unidad) | Precio/IP (1000+) | Latam disponible |
+|---|---|---|---|
+| Bright Data | $2.00/mes | ~$0.80/mes | Sí (Chile) |
+| IPRoyal | $1.75/mes | ~$0.70/mes | Sí |
+| ProxyLine | $1.20/mes | ~$0.60/mes | Sí |
+| 922proxy | $0.90/mes | ~$0.50/mes | Limitado |
+
+### Sin proxy (plan actual, hasta ~50 users)
+- 10 sesiones desde 1 IP de datacenter AWS = riesgo medio
+- Mitigación: conexiones estables, sin spam, user-agent consistente
+- Si hay ban → agregar proxy es 1 línea de config, no requiere rediseño
 
 ## Pasos de implementación (cuando lleguemos a 10 users)
 
