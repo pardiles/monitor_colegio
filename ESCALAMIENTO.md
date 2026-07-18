@@ -1,12 +1,32 @@
 # Plan de Escalamiento - Monitor Colegio
 
-## Arquitectura actual (1-10 usuarios)
+## Arquitectura target: Fleet + Proxy (1 IP/10 users)
 
-- 1 EC2 Spot t3.small (us-east-2) corriendo 24/7
-- wa_listener.js: conexión WA permanente para todos los users
-- main.py: scraping + Claude + envío via outbox (cron 2x/día)
-- S3: config de usuarios, landing
-- Costo: **$7.92/mes** ($2.64/user con 3 users)
+### Decisión
+- **100 users/instancia** (EC2 t3.medium, Baileys ~15MB/sesión en idle)
+- **1 IP residencial estática por cada 10 users** (proxy SOCKS5)
+- **Gemini Flash** para AI (migrar desde Haiku cuando haya 100+ users)
+- **Costo target: $0.33/user/mes** (sin negociar bulk)
+- **Costo con bulk (1000+ users): $0.21/user/mes**
+
+### Cómo funciona el proxy
+- Cada instancia EC2 tiene 10 proxies residenciales asignados (100 users / 10 = 10 IPs)
+- Cada grupo de 10 usuarios comparte 1 IP residencial
+- Baileys usa `SocksProxyAgent` para rutear tráfico WA por el proxy
+- El scraping (SchoolNet, Gmail) sigue saliendo por la IP de AWS (no necesita proxy)
+
+```javascript
+// wa_listener.js - asignar proxy por grupo de users
+const { SocksProxyAgent } = require('socks-proxy-agent');
+
+const proxyUrl = userCfg.proxy; // asignado al onboarding
+const agent = proxyUrl ? new SocksProxyAgent(proxyUrl) : undefined;
+
+const sock = makeWASocket({
+    auth: state,
+    agent: agent,
+});
+```
 
 ## Escalamiento: EC2 Spot Fleet (10 users/instancia)
 
@@ -157,25 +177,29 @@ Config por usuario:
 - Mitigación: conexiones estables, sin spam, user-agent consistente
 - Si hay ban → agregar proxy es 1 línea de config, no requiere rediseño
 
-## Pasos de implementación (cuando lleguemos a 10 users)
+## Pasos de implementación
 
-### Fase 1: Preparar AMI
+### Fase 1: Preparar AMI (cuando lleguemos a 10 users)
 - [ ] Crear AMI desde instancia actual
 - [ ] Crear launch template con user-data script
 - [ ] Script de boot: sync S3 → start services
 
-### Fase 2: Fleet básico
+### Fase 2: Fleet básico + Proxy
 - [ ] Crear Spot Fleet request (capacity=2)
 - [ ] Implementar `fleet/assignments.json` en S3
-- [ ] Modificar Lambda onboarding para asignar instancia
+- [ ] Contratar IPs residenciales estáticas (1 por cada 10 users)
+- [ ] Configurar SOCKS5 proxy en Baileys (SocksProxyAgent)
+- [ ] Asignar proxy al crear usuario (Lambda onboarding)
 - [ ] Modificar SSM commands para target instancia correcta
+- [ ] Dependencia: `npm install socks-proxy-agent`
 
 ### Fase 3: Auto-scaling
-- [ ] CloudWatch alarm: si todas las instancias tienen ≥8 users → scale up
+- [ ] CloudWatch alarm: si todas las instancias tienen ≥80 users → scale up
 - [ ] Lambda que modifica target capacity del fleet
+- [ ] Al scale up: comprar nueva IP de proxy para la nueva instancia
 - [ ] Manejo de scale-down (mover users si instancia queda vacía)
 
-### Fase 4: Proxy (solo si hay ban)
-- [ ] Evaluar Bright Data / IPRoyal pricing
-- [ ] Configurar proxy SOCKS5 en Baileys
-- [ ] 1 proxy por instancia (10 users comparten 1 IP residencial)
+### Fase 4: Migrar AI a Gemini Flash (cuando haya 100+ users)
+- [ ] Implementar client Gemini Flash
+- [ ] Validar calidad de resúmenes vs Haiku
+- [ ] Switchear (feature flag por usuario para A/B test)
