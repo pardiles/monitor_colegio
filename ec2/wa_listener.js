@@ -190,6 +190,7 @@ async function main() {
 
     // --- OUTBOX WATCHER: Revisar mensajes pendientes cada 3s ---
     const OUTBOX_DIR = path.join(DATA_DIR, 'outbox');
+    console.log('[OUTBOX] Watcher iniciado, revisando cada 3s en', OUTBOX_DIR);
     setInterval(() => {
         try {
             const files = fs.readdirSync(OUTBOX_DIR).filter(f => f.endsWith('.json'));
@@ -200,8 +201,8 @@ async function main() {
 
                 const userId = data.user_id;
                 const sock = activeSessions[userId];
-                if (!sock || !sock._isOnline) {
-                    // Socket not connected yet, skip for now
+                if (!sock) {
+                    // No session for this user
                     continue;
                 }
 

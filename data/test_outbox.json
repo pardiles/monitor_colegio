@@ -1,0 +1,7 @@
+{
+  "user_id": "pablo_ardiles",
+  "targets": ["120363409985436264@g.us"],
+  "message": "📋 Test: mensaje de prueba outbox",
+  "created_at": "2026-07-18T14:00:00Z",
+  "status": "pending"
+}
