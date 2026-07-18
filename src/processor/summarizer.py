@@ -143,7 +143,8 @@ REGLAS DE FORMATO:
 - Al final de cada punto, indicar la fuente entre paréntesis: (SC Info), (email), (WA 5°A), (calendario), (SchoolNet)
 - NO repetir la misma info si viene de múltiples fuentes — fusionar en 1 línea con la fuente más completa
 - SIEMPRE incluir hora de salida por hijo
-- SIEMPRE revisar calendario_persistente para entrevistas/pruebas con hora
+- ⚠️ REUNIONES/ENTREVISTAS del calendario_persistente con hora: INCLUIR SIEMPRE con ⚠️, fecha, hora y lugar. NUNCA omitirlas. Son citas confirmadas.
+- SIEMPRE revisar calendario_persistente para HOY y próximos 5 días
 - Máximo 22 líneas
 - Español chileno natural
 """
@@ -181,7 +182,8 @@ REGLAS DE FORMATO:
 - La sección MAÑANA SÍ se repite siempre (es la preparación para el día siguiente)
 - Agrupar por DÍA, no por fuente. Fusionar si 2 fuentes dicen lo mismo
 - Indicar fuente al final: (SC Info), (email), (WA 5°A), (calendario)
-- SIEMPRE revisar calendario_persistente para mañana
+- ⚠️ REUNIONES/ENTREVISTAS del calendario_persistente con hora: INCLUIR SIEMPRE con ⚠️, fecha, hora y lugar. NUNCA omitirlas.
+- SIEMPRE revisar calendario_persistente para mañana y próximos 5 días
 - Si mañana es fin de semana, mostrar info del lunes
 - Omitir secciones vacías
 - Máximo 25 líneas

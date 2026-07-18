@@ -385,7 +385,7 @@ def _extract_events_with_ai_all(texts: List[Dict]) -> List[Dict]:
     """Usa Claude para extraer eventos futuros de TODAS las fuentes."""
     import anthropic
     
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
         return []
     
@@ -400,21 +400,29 @@ def _extract_events_with_ai_all(texts: List[Dict]) -> List[Dict]:
     today = datetime.now(CHILE_TZ).strftime("%Y-%m-%d")
     
     prompt = f"""Analiza estas comunicaciones del colegio y extrae TODOS los eventos futuros (fecha >= {today}).
-Incluye: reuniones, entrevistas, pruebas, actividades, salidas anticipadas, días sin clases, plazos, inscripciones, cumpleaños invitados, partidos, etc.
+
+IMPORTANTE - EXTRAER ESPECIALMENTE:
+- Reuniones/entrevistas de apoderados con fecha y hora exacta
+- Pruebas y evaluaciones
+- Días sin clases
+- Plazos de inscripción
+- Salidas anticipadas
+- Actividades especiales
 
 Comunicaciones:
 {content}
 
 Para cada evento devuelve un JSON con:
-- fecha: YYYY-MM-DD
-- descripcion: texto corto descriptivo
-- hora: HH:MM (o null si no se indica)
-- lugar: texto (o null)
-- hijo: "franco"/"blanca"/"ambos" (o el nombre del hijo que aplique)
+- fecha: YYYY-MM-DD (año actual es {datetime.now(CHILE_TZ).year}. Si dice "jueves 23 de julio" = {datetime.now(CHILE_TZ).year}-07-23)
+- descripcion: texto corto descriptivo (incluir con quién es la reunión si se menciona)
+- hora: HH:MM (o null si no se indica). Si dice "11:10 hrs" → "11:10"
+- lugar: texto (o null). Ej: "oficina de Miss Isabel"
+- hijo: "franco"/"blanca"/"ambos" (si el asunto o body menciona un nombre específico, usar ese)
 - tipo: "reunion"/"evaluacion"/"sin_clases"/"evento"/"entrega"/"extraprogramatica"
+- fuente: la fuente del texto original (email, scinfo, etc.)
 
 Responde SOLO con un array JSON. Si no hay eventos futuros, responde [].
-No incluir eventos que ya pasaron. Año actual: {datetime.now(CHILE_TZ).year}."""
+No incluir eventos cuya fecha ya pasó (< {today})."""
 
     client = anthropic.Anthropic(api_key=api_key)
     response = client.messages.create(

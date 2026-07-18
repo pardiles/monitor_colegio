@@ -556,6 +556,17 @@ def ingest_for_user(user_cfg: dict) -> dict:
     # Horarios
     data["horarios"] = _load_horarios()
 
+    # Calendario persistente: actualizar con datos nuevos y cargar próximos eventos
+    print("\n📅 Calendario persistente...")
+    try:
+        new_events = update_calendar_from_sources(data)
+        upcoming = get_upcoming_events(days=14)
+        data["calendario_persistente"] = upcoming
+        print(f"   ✅ {new_events} eventos nuevos, {len(upcoming)} próximos 14 días")
+    except Exception as e:
+        print(f"   ⚠️ Calendario: {e}")
+        data["calendario_persistente"] = get_upcoming_events(days=14)
+
     return data
 
 
