@@ -69,6 +69,18 @@ class SchoolNetClient:
             "Referer": f"{self.BASE_URL}/index",
         })
 
+    def select_alumno(self, idx: int):
+        """Cambiar el alumno activo modificando la cookie sn3data."""
+        sn3data = self.session.cookies.get("sn3data", "")
+        if not sn3data:
+            return
+        # Reemplazar alum=X con el nuevo índice
+        import re
+        new_val = re.sub(r'alum=\d+', f'alum={idx}', sn3data)
+        if new_val == sn3data and 'alum=' not in sn3data:
+            new_val = f"alum={idx}&{sn3data}"
+        self.session.cookies.set("sn3data", new_val, domain="schoolnet.colegium.com")
+
     def _get(self, endpoint: str, params: Dict = None) -> Any:
         """GET a un endpoint de SchoolNet."""
         if not self.session:
@@ -86,14 +98,17 @@ class SchoolNetClient:
 
     def get_calificaciones(self, alumno: int = 0) -> Dict:
         """Obtener calificaciones por alumno (0=primero, 1=segundo)."""
+        self.select_alumno(alumno)
         return self._get("calificaciones/index", {"tipocalificacion": "nota", "alumno": alumno})
 
     def get_asistencia(self, alumno: int = 0) -> Dict:
         """Obtener asistencia y conducta por alumno."""
+        self.select_alumno(alumno)
         return self._get("asistencia/index", {"alumno": alumno})
 
     def get_conducta(self, alumno: int = 0) -> Dict:
         """Obtener conducta (anotaciones) por alumno."""
+        self.select_alumno(alumno)
         return self._get("conducta/index", {"alumno": alumno})
 
     def get_pagos(self) -> Dict:
@@ -106,6 +121,7 @@ class SchoolNetClient:
 
     def get_companeros(self, alumno: int = 0) -> Dict:
         """Obtener lista de compañeros (incluye cumpleaños)."""
+        self.select_alumno(alumno)
         return self._get("companeros/index", {"alumno": alumno})
 
     def get_agenda(self) -> Dict:
@@ -118,6 +134,7 @@ class SchoolNetClient:
 
     def get_salud(self, alumno: int = 0) -> Dict:
         """Obtener visitas a enfermería por alumno."""
+        self.select_alumno(alumno)
         return self._get("salud/index", {"alumno": alumno})
 
     def get_extracurriculares_url(self) -> str:

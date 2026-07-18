@@ -439,37 +439,51 @@ def ingest_for_user(user_cfg: dict) -> dict:
                             from src.sources.extracurriculares import fetch_extracurriculares as fetch_extras
                             extras_raw = fetch_extras(sso_url)
                             if extras_raw:
-                                data["extraprogramaticas"] = [vars(e) for e in extras_raw]
-                                # Actualizar config del usuario
-                                user_cfg["extraprogramaticas"] = [
-                                    {"nombre": e.nombre, "dia": e.dia, "horario": e.horario,
-                                     "hijo": user_cfg["hijos"][0]["nombre"] if user_cfg.get("hijos") else "",
-                                     "hora_salida_real": e.horario.split("-")[1] if "-" in e.horario else ""}
-                                    for e in extras_raw if e.dia and e.horario
-                                ]
+                                data["extraprogramaticas_schoolnet"] = [vars(e) for e in extras_raw]
+                                print(f"   ✅ Extraprogramáticas: {len(extras_raw)}")
                     except Exception as e:
                         print(f"   ⚠️ Extraprogramáticas: {e}")
 
+                    # Comunicaciones (compartido entre hijos)
                     data["comunicaciones"] = sn.get_comunicaciones()
+                    print("   ✅ Comunicaciones")
+
+                    # Pagos (compartido)
+                    data["pagos"] = sn.get_pagos()
+                    print("   ✅ Pagos")
+
+                    # Por cada hijo: calificaciones, asistencia, conducta, salud, compañeros
                     hijos = user_cfg.get("hijos", [])
                     for i, hijo in enumerate(hijos):
-                        data[f"calificaciones_{hijo['nombre'].lower()}"] = sn.get_calificaciones(i)
-                    data["asistencia"] = sn.get_asistencia(0)
-                    data["pagos"] = sn.get_pagos()
-                    data["companeros"] = sn.get_companeros(0)
-                    # Conducta y salud (para resumen)
-                    hijos_cfg = user_cfg.get("hijos", [])
-                    for i, hijo in enumerate(hijos_cfg):
+                        nombre = hijo["nombre"].lower()
                         try:
-                            data[f"conducta_{hijo['nombre'].lower()}"] = sn.get_conducta(i)
+                            data[f"calificaciones_{nombre}"] = sn.get_calificaciones(i)
                         except Exception:
                             pass
                         try:
-                            data[f"salud_{hijo['nombre'].lower()}"] = sn.get_salud(i)
+                            data[f"asistencia_{nombre}"] = sn.get_asistencia(i)
                         except Exception:
                             pass
+                        try:
+                            data[f"conducta_{nombre}"] = sn.get_conducta(i)
+                        except Exception:
+                            pass
+                        try:
+                            data[f"salud_{nombre}"] = sn.get_salud(i)
+                        except Exception:
+                            pass
+                        try:
+                            data[f"companeros_{nombre}"] = sn.get_companeros(i)
+                        except Exception:
+                            pass
+                    print(f"   ✅ Datos por hijo ({len(hijos)} hijos)")
+
+                else:
+                    print("   ❌ SchoolNet login falló")
+                    connection_errors.append("SchoolNet: login falló")
             except Exception as e:
                 print(f"   ⚠️ SchoolNet: {e}")
+                connection_errors.append(f"SchoolNet: {e}")
 
         # Calendario (API pública del colegio)
         cal_url = colegio.get("calendario_url", "")
@@ -480,31 +494,6 @@ def ingest_for_user(user_cfg: dict) -> dict:
                     data["calendario"] = fetch_evaluaciones(categorias)
             except Exception as e:
                 print(f"   ⚠️ Calendario: {e}")
-
-        # Extraprogramáticas (desde SchoolNet SSO)
-        if sn_user and sn_pass:
-            try:
-                sn_extras = SchoolNetClient(sn_user, sn_pass)
-                if sn_extras.login():
-                    sso_url = sn_extras.get_extracurriculares_url()
-                    if sso_url:
-                        extras_raw = fetch_extracurriculares(sso_url)
-                        if extras_raw:
-                            data["extraprogramaticas_schoolnet"] = [vars(e) for e in extras_raw]
-                            # Actualizar config del usuario con extras actuales
-                            user_cfg["extraprogramaticas"] = [
-                                {
-                                    "nombre": e.nombre,
-                                    "dia": e.dia,
-                                    "horario": e.horario,
-                                    "hijo": user_cfg["hijos"][0]["nombre"] if user_cfg.get("hijos") else "desconocido",
-                                    "hora_salida_real": e.horario.split("-")[1] if "-" in e.horario else "",
-                                }
-                                for e in extras_raw if e.dia and e.horario
-                            ]
-                            print(f"   ✅ Extraprogramáticas: {len(user_cfg['extraprogramaticas'])}")
-            except Exception as e:
-                print(f"   ⚠️ Extraprogramáticas: {e}")
 
         # SC Info (si es Sagrado Corazón)
         if colegio.get("scinfo_url"):
