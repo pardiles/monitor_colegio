@@ -11,6 +11,14 @@ from typing import Dict, Any, Optional
 
 CHILE_TZ = ZoneInfo("America/Santiago")
 
+# Nombres en español para fechas (evita depender de locale del sistema)
+DIAS_ES = {0:'Lunes',1:'Martes',2:'Miércoles',3:'Jueves',4:'Viernes',5:'Sábado',6:'Domingo'}
+MESES_ES = {1:'enero',2:'febrero',3:'marzo',4:'abril',5:'mayo',6:'junio',7:'julio',8:'agosto',9:'septiembre',10:'octubre',11:'noviembre',12:'diciembre'}
+
+def fecha_es(dt) -> str:
+    """Formatea datetime a español: 'Sábado 18 de julio de 2026'."""
+    return f"{DIAS_ES[dt.weekday()]} {dt.day} de {MESES_ES[dt.month]} de {dt.year}"
+
 
 def build_context(user_cfg: Optional[Dict] = None) -> str:
     """Genera el contexto del prompt dinámicamente desde la config del usuario."""
@@ -229,7 +237,7 @@ class Summarizer:
         else:
             context_note = "\nEs un mensaje DIARIO. Solo incluir si hay algo relevante para HOY. Si no hay nada especial, responder con los ramos/hora de salida y '✅ Sin novedades adicionales.'"
 
-        user_content = f"""Fecha de hoy: {today.strftime('%A %d de %B de %Y')}{context_note}
+        user_content = f"""Fecha de hoy: {fecha_es(today)}{context_note}
 
 Datos disponibles:
 {self._format_data(data)}
@@ -254,7 +262,7 @@ Genera el briefing matutino."""
         else:
             context_note = "\nEs un mensaje DIARIO PM. Foco: novedades de HOY + preparación para MAÑANA."
 
-        user_content = f"""Fecha de hoy: {today.strftime('%A %d de %B de %Y')}{context_note}
+        user_content = f"""Fecha de hoy: {fecha_es(today)}{context_note}
 
 Datos del día:
 {self._format_data(data)}
