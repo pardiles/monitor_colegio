@@ -38,6 +38,24 @@ fs.mkdirSync(authFolder, { recursive: true });
 let qrTimeout = null;
 let connected = false;
 
+// Safety: matar proceso anterior del mismo usuario si existe
+const pidFile = path.join('/tmp', `vincular_${userId}.pid`);
+try {
+    const oldPid = fs.readFileSync(pidFile, 'utf-8').trim();
+    if (oldPid) {
+        try { process.kill(parseInt(oldPid)); console.log(`[${userId}] Proceso anterior (PID ${oldPid}) terminado`); } catch {}
+    }
+} catch {}
+fs.writeFileSync(pidFile, String(process.pid));
+
+// Hard timeout: salir a los 3 minutos pase lo que pase
+setTimeout(() => {
+    if (!connected) {
+        console.log(`[${userId}] Hard timeout 3 min - saliendo`);
+        process.exit(1);
+    }
+}, 180000);
+
 async function start() {
     const { state, saveCreds } = await useMultiFileAuthState(authFolder);
     const sock = makeWASocket({

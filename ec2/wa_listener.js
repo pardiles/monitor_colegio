@@ -33,6 +33,7 @@ function cleanOld(arr) {
 
 /**
  * Inicia una sesión Baileys para un usuario.
+ * Retorna el socket para uso en outbox.
  */
 async function startSession(userCfg) {
     const userId = userCfg.id;
@@ -44,7 +45,7 @@ async function startSession(userCfg) {
     // Solo iniciar si tiene auth guardada
     if (!fs.existsSync(authFolder)) {
         console.log(`[${userId}] Sin auth en ${authFolder}, saltando`);
-        return;
+        return null;
     }
 
     const { state, saveCreds } = await useMultiFileAuthState(authFolder);
@@ -115,60 +116,46 @@ async function startSession(userCfg) {
         const { connection, lastDisconnect } = update;
         if (connection === 'open') {
             console.log(`[${userId}] WhatsApp ONLINE (${waCfg.phone})`);
+            sock._isOnline = true;
+            // Guardar lista de grupos localmente para list_groups.js
+            (async () => {
+                try {
+                    const groups = await sock.groupFetchAllParticipating();
+                    const groupList = Object.values(groups).map(g => ({
+                        id: g.id, name: g.subject, participants: g.participants?.length || 0,
+                    }));
+                    const groupsFile = path.join(DATA_DIR, `groups_${userId}.json`);
+                    fs.writeFileSync(groupsFile, JSON.stringify(groupList, null, 2));
+                    console.log(`[${userId}] ${groupList.length} grupos guardados localmente`);
+                } catch (e) {
+                    console.log(`[${userId}] Error guardando grupos: ${e.message}`);
+                }
+            })();
         }
         if (connection === 'close') {
+            sock._isOnline = false;
             const code = lastDisconnect?.error?.output?.statusCode;
             if (code === DisconnectReason.loggedOut) {
                 console.log(`[${userId}] LOGGED OUT - necesita re-vincular QR`);
                 return; // No reconectar si fue logout manual
             }
             console.log(`[${userId}] Desconectado, reconectando en 5s...`);
-            setTimeout(() => startSession(userCfg), 5000);
+            setTimeout(async () => {
+                const newSock = await startSession(userCfg);
+                if (newSock && global._activeSessions) {
+                    global._activeSessions[userId] = newSock;
+                }
+            }, 5000);
         }
     });
-}
 
-/**
- * Enviar mensaje por WhatsApp para un usuario específico.
- * Usado por send_whatsapp.js (vía require) o directamente.
- */
-async function sendMessage(userId, message, targets) {
-    const users = loadJSON(USERS_FILE, []);
-    const userCfg = users.find(u => u.id === userId);
-    if (!userCfg) throw new Error(`Usuario ${userId} no encontrado`);
-
-    const waCfg = userCfg.whatsapp || {};
-    const authFolder = path.join(BASE_DIR, waCfg.auth_folder || `baileys_auth/${userId}`);
-
-    if (!fs.existsSync(authFolder)) throw new Error(`Sin auth para ${userId}`);
-
-    const { state, saveCreds } = await useMultiFileAuthState(authFolder);
-    const sock = makeWASocket({ auth: state, printQRInTerminal: false });
-    sock.ev.on('creds.update', saveCreds);
-
-    return new Promise((resolve, reject) => {
-        sock.ev.on('connection.update', async (update) => {
-            if (update.connection === 'open') {
-                try {
-                    const msgClean = message.replace(/\*\*/g, '*');
-                    for (const target of targets) {
-                        await sock.sendMessage(target, { text: msgClean });
-                        console.log(`[${userId}] Enviado a ${target}`);
-                    }
-                    resolve();
-                } catch (e) {
-                    reject(e);
-                } finally {
-                    setTimeout(() => sock.end(), 2000);
-                }
-            }
-        });
-    });
+    return sock;
 }
 
 // --- MAIN ---
 async function main() {
     fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.mkdirSync(path.join(DATA_DIR, 'outbox'), { recursive: true });
 
     // Cargar usuarios
     const users = loadJSON(USERS_FILE, []);
@@ -179,12 +166,17 @@ async function main() {
 
     console.log(`Starting WhatsApp listener for ${users.length} usuarios...`);
 
+    // Map de sesiones activas para envío via outbox
+    const activeSessions = {};
+    global._activeSessions = activeSessions;
+
     // Iniciar sesión para cada usuario que tenga auth
     for (const userCfg of users) {
         const authFolder = path.join(BASE_DIR, userCfg.whatsapp?.auth_folder || `baileys_auth/${userCfg.id}`);
         if (fs.existsSync(authFolder)) {
             try {
-                await startSession(userCfg);
+                const sock = await startSession(userCfg);
+                if (sock) activeSessions[userCfg.id] = sock;
                 console.log(`[${userCfg.id}] Sesión iniciada`);
             } catch (e) {
                 console.log(`[${userCfg.id}] Error: ${e.message}`);
@@ -195,10 +187,59 @@ async function main() {
     }
 
     console.log('Todas las sesiones iniciadas. Escuchando mensajes...');
+
+    // --- OUTBOX WATCHER: Revisar mensajes pendientes cada 3s ---
+    const OUTBOX_DIR = path.join(DATA_DIR, 'outbox');
+    setInterval(() => {
+        try {
+            const files = fs.readdirSync(OUTBOX_DIR).filter(f => f.endsWith('.json'));
+            for (const file of files) {
+                const filePath = path.join(OUTBOX_DIR, file);
+                const data = loadJSON(filePath, null);
+                if (!data || data.status !== 'pending') continue;
+
+                const userId = data.user_id;
+                const sock = activeSessions[userId];
+                if (!sock || !sock._isOnline) {
+                    // Socket not connected yet, skip for now
+                    continue;
+                }
+
+                // Mark as processing to avoid re-entry
+                data.status = 'processing';
+                saveJSON(filePath, data);
+
+                (async () => {
+                    try {
+                        for (const target of data.targets) {
+                            await sock.sendMessage(target, { text: data.message });
+                            console.log(`[${userId}][OUTBOX] Enviado a ${target}`);
+                        }
+                        data.status = 'sent';
+                        data.sent_at = new Date().toISOString();
+                        saveJSON(filePath, data);
+                        console.log(`[${userId}][OUTBOX] ✅ Completado`);
+
+                        // Limpiar archivo después de 5 min
+                        setTimeout(() => {
+                            try { fs.unlinkSync(filePath); } catch {}
+                        }, 300000);
+                    } catch (e) {
+                        console.log(`[${userId}][OUTBOX] Error: ${e.message}`);
+                        data.status = 'error';
+                        data.error = e.message;
+                        saveJSON(filePath, data);
+                    }
+                })();
+            }
+        } catch (e) {
+            // Silently ignore outbox errors
+        }
+    }, 3000);
 }
 
-// Exportar sendMessage para uso desde send_whatsapp.js
-module.exports = { sendMessage };
+// Exportar (outbox es el método preferido de envío)
+module.exports = { };
 
 // Si se ejecuta directamente (no require'd)
 if (require.main === module) {
