@@ -365,6 +365,26 @@ async function main() {
                     continue;
                 }
 
+                if (data.type === 'update_photo') {
+                    data.status = 'processing';
+                    saveJSON(filePath, data);
+                    (async () => {
+                        try {
+                            const photoBuffer = fs.readFileSync(data.photo_path);
+                            await sock.updateProfilePicture(data.group_id, photoBuffer);
+                            data.status = 'sent';
+                            saveJSON(filePath, data);
+                            console.log(`[${userId}][CMD] Foto del grupo actualizada`);
+                            setTimeout(() => { try { fs.unlinkSync(filePath); } catch {} }, 60000);
+                        } catch (e) {
+                            data.status = 'error'; data.error = e.message;
+                            saveJSON(filePath, data);
+                            console.log(`[${userId}][CMD] Error foto: ${e.message}`);
+                        }
+                    })();
+                    continue;
+                }
+
                 // Mensaje normal
 
                 // Mark as processing to avoid re-entry

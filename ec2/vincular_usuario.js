@@ -206,33 +206,60 @@ async function createMonitorGroup(sock) {
             console.log(`[${userId}] Error promoviendo admins: ${e.message}`);
         }
 
-        // Poner logo del colegio como foto del grupo
+        // Poner imagen generada como foto del grupo (texto con nombre del colegio)
         try {
-            const colegioUrl = userCfg.colegio?.web_url || userCfg.colegios?.[0]?.web_url || '';
-            if (colegioUrl) {
-                const logoUrl = colegioUrl.replace(/\/$/, '') + '/favicon.ico';
-                const https = require('https');
-                const http = require('http');
-                const fetch = logoUrl.startsWith('https') ? https : http;
-                const logoBuffer = await new Promise((resolve, reject) => {
-                    fetch.get(logoUrl, (res) => {
-                        if (res.statusCode === 301 || res.statusCode === 302) {
-                            // Follow redirect
-                            fetch.get(res.headers.location, (r2) => {
-                                const chunks = []; r2.on('data', c => chunks.push(c)); r2.on('end', () => resolve(Buffer.concat(chunks)));
-                            }).on('error', reject);
-                        } else {
-                            const chunks = []; res.on('data', c => chunks.push(c)); res.on('end', () => resolve(Buffer.concat(chunks)));
-                        }
-                    }).on('error', reject);
-                });
-                if (logoBuffer.length > 100) {
-                    await sock.updateProfilePicture(groupId, logoBuffer);
-                    console.log(`[${userId}] Logo del colegio puesto como foto del grupo`);
+            const { createCanvas } = require('canvas');
+            const colegioNombres = userCfg.colegios
+                ? userCfg.colegios.map(c => c.nombre).join(' / ')
+                : (userCfg.colegio?.nombre || 'Mi Colegio');
+
+            // Generar imagen 500x500
+            const canvas = createCanvas(500, 500);
+            const ctx = canvas.getContext('2d');
+
+            // Fondo gradiente azul oscuro
+            const grad = ctx.createLinearGradient(0, 0, 0, 500);
+            grad.addColorStop(0, '#0a0a2a');
+            grad.addColorStop(1, '#1a1a4a');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 500, 500);
+
+            // Emoji libro
+            ctx.font = '80px serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('📚', 250, 150);
+
+            // "Monitor Colegio"
+            ctx.font = 'bold 36px sans-serif';
+            ctx.fillStyle = '#4fc3f7';
+            ctx.fillText('Monitor Colegio', 250, 240);
+
+            // Nombre del colegio (wrap si es largo)
+            ctx.font = '24px sans-serif';
+            ctx.fillStyle = '#e0e0e0';
+            const words = colegioNombres.split(' ');
+            let lines = [];
+            let currentLine = '';
+            for (const word of words) {
+                const test = currentLine ? currentLine + ' ' + word : word;
+                if (ctx.measureText(test).width > 420) {
+                    lines.push(currentLine);
+                    currentLine = word;
+                } else {
+                    currentLine = test;
                 }
             }
+            if (currentLine) lines.push(currentLine);
+            lines.forEach((line, i) => {
+                ctx.fillText(line, 250, 300 + i * 35);
+            });
+
+            // Guardar y setear
+            const photoBuffer = canvas.toBuffer('image/png');
+            await sock.updateProfilePicture(groupId, photoBuffer);
+            console.log(`[${userId}] Foto del grupo generada y aplicada`);
         } catch (e) {
-            console.log(`[${userId}] No se pudo poner logo: ${e.message}`);
+            console.log(`[${userId}] No se pudo generar/poner foto: ${e.message}`);
         }
 
         // Poner descripción del grupo (dinámica con nombres de hijos)
@@ -258,7 +285,7 @@ async function createMonitorGroup(sock) {
         const hijosStr = hijosNombres.length > 0 ? hijosNombres.join(' y ') : 'tus hijos';
         const ej1 = hijosNombres[0] || 'mi hijo';
         const ej2 = hijosNombres[1] || hijosNombres[0] || 'mi hijo';
-        const welcomeMsg = `👋 ¡Bienvenido al Monitor Colegio!\n\nEste grupo te enviará resúmenes diarios sobre ${hijosStr}:\n• 📋 7:00 AM - Lo que pasa hoy\n• 📬 20:00 - Lo nuevo del día + mañana\n• 📅 Domingo PM - Panorama de la semana\n\n🤖 *Asistente 24/7:* Pregúntame lo que quieras (con ?):\n• "¿A qué hora sale ${ej1} mañana?"\n• "¿Cuándo es la próxima prueba?"\n• "¿Quién es la profesora jefe de ${ej2}?"\n\n💡 Escribe instrucciones y las anoto:\n• "${ej1} no va al colegio mañana"\n• "${ej2} tiene cumpleaños viernes 17:00"\n\n📌 Fija este mensaje para tenerlo siempre a mano.`;
+        const welcomeMsg = `👋 ¡Bienvenido al Monitor Colegio!\n\nEste grupo te enviará resúmenes diarios sobre ${hijosStr}:\n• 📋 7:00 AM - Lo que pasa hoy\n• 📬 20:00 - Lo nuevo del día + mañana\n• 📅 Domingo PM - Panorama de la semana\n\n🤖 *Asistente 24/7:* Pregúntame lo que quieras (con ?):\n• "¿A qué hora sale ${ej1} mañana?"\n• "¿Cuándo es la próxima prueba?"\n• "¿Quién es la profesora jefe de ${ej2}?"\n\n💡 Escribe instrucciones y las anoto:\n• "${ej1} no va al colegio mañana"\n• "${ej2} tiene cumpleaños viernes 17:00"\n\n📌 Fija este mensaje para tenerlo siempre a mano.\n\n🚪 ¿Darte de baja? WhatsApp → Dispositivos vinculados → cierra "Google Chrome (Mac OS)". Luego: saca participantes del grupo → Salir → Eliminar grupo.`;
         const sentMsg = await sock.sendMessage(groupId, { text: welcomeMsg });
         console.log(`[${userId}] Mensaje de bienvenida enviado al grupo`);
 
