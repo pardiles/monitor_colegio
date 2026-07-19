@@ -90,7 +90,9 @@ async function botRespond(sock, groupId, question, userCfg) {
     if (botContext.calificaciones) {
         for (const [hijo, asigs] of Object.entries(botContext.calificaciones)) {
             if (Array.isArray(asigs) && asigs.length > 0) {
-                const notas = asigs.filter(a => a.asignatura && a.promedio).map(a => `${a.asignatura}: ${a.promedio}`).join(', ');
+                const nombres = asigs.map(a => a.asignatura).filter(Boolean).join(', ');
+                const notas = asigs.filter(a => a.promedio).map(a => `${a.asignatura}: ${a.promedio}`).join(', ');
+                calificacionesTxt += `\nAsignaturas de ${hijo}: ${nombres}`;
                 if (notas) calificacionesTxt += `\nNotas de ${hijo}: ${notas}`;
             }
         }
@@ -101,7 +103,13 @@ async function botRespond(sock, groupId, question, userCfg) {
     if (botContext.conducta) {
         for (const [hijo, anots] of Object.entries(botContext.conducta)) {
             if (Array.isArray(anots) && anots.length > 0) {
-                conductaTxt += `\nAnotaciones de ${hijo}: ${anots.slice(-5).map(a => typeof a === 'string' ? a : JSON.stringify(a)).join('; ').substring(0, 300)}`;
+                const formatted = anots.slice(-5).map(a => {
+                    if (typeof a === 'object') {
+                        return `${a.fecha || ''}: ${a.motivo || a.observacion || JSON.stringify(a).substring(0, 80)} (${a.profesor || ''})`;
+                    }
+                    return String(a).substring(0, 80);
+                }).join('; ');
+                conductaTxt += `\nConducta ${hijo} (últimas): ${formatted}`;
             }
         }
     }
@@ -109,8 +117,22 @@ async function botRespond(sock, groupId, question, userCfg) {
     // Asistencia
     let asistenciaTxt = '';
     if (botContext.asistencia) {
-        for (const [hijo, data] of Object.entries(botContext.asistencia)) {
-            asistenciaTxt += `\nAsistencia ${hijo}: ${data.inasistencias || 0} inasistencias`;
+        for (const [hijo, info] of Object.entries(botContext.asistencia)) {
+            asistenciaTxt += `\nAsistencia ${hijo}: ${info.inasistencias || 0} inasistencias totales`;
+            // Extraer fechas de inasistencias
+            if (info.ultimas && Array.isArray(info.ultimas)) {
+                const fechas = [];
+                for (const asig of info.ultimas) {
+                    if (asig.detalle && Array.isArray(asig.detalle)) {
+                        for (const d of asig.detalle) {
+                            if (d.fecha) fechas.push(`${d.fecha} (${asig.asig})`);
+                        }
+                    }
+                }
+                if (fechas.length > 0) {
+                    asistenciaTxt += `. Fechas: ${fechas.slice(-10).join(', ')}`;
+                }
+            }
         }
     }
 
@@ -124,7 +146,37 @@ async function botRespond(sock, groupId, question, userCfg) {
         }
     }
 
+    // Emails recientes
+    let emailsTxt = '';
+    if (botContext.emails_recientes && botContext.emails_recientes.length > 0) {
+        emailsTxt = '\nEmails recientes del colegio:';
+        for (const e of botContext.emails_recientes.slice(-5)) {
+            emailsTxt += `\n  ${e.fecha} | De: ${e.de} | Asunto: ${e.asunto} | ${e.resumen?.substring(0, 100) || ''}`;
+        }
+    }
+
+    // SC Info
+    let scinfoTxt = '';
+    if (botContext.scinfo && botContext.scinfo.contenido) {
+        scinfoTxt = `\nSC Info (${botContext.scinfo.fecha}): ${botContext.scinfo.contenido.substring(0, 500)}`;
+    }
+
     const profesoresTxt = (botContext.profesores || []).map(p => `${p.hijo} (${p.curso}) - Prof jefe: ${p.profesora_jefe}${p.email ? ' - ' + p.email : ''}`).join('\n');
+
+    // Formatear horarios como texto legible
+    let horariosTxt = '';
+    if (horarios) {
+        for (const [key, dias] of Object.entries(horarios)) {
+            horariosTxt += `\nHorario ${key}:`;
+            if (typeof dias === 'object') {
+                for (const [dia, info] of Object.entries(dias)) {
+                    if (info && info.ramos) {
+                        horariosTxt += `\n  ${dia}: ${info.ramos.join(', ')}. Sale: ${info.hora_salida || '?'}`;
+                    }
+                }
+            }
+        }
+    }
 
     const context = `Hijos:
 ${hijos}
@@ -135,9 +187,7 @@ Extraprogramáticas:
 ${extras || 'No configuradas'}
 
 Régimen custodia: ${regimen.tipo || 'No aplica'}${regimen.padre ? ` (${regimen.padre} / ${regimen.madre})` : ''}
-
-Horarios semanales:
-${JSON.stringify(horarios).substring(0, 1500)}
+${horariosTxt}
 
 Próximos eventos (calendario):
 ${eventosStr || 'Sin eventos próximos'}
@@ -149,6 +199,8 @@ ${asistenciaTxt}
 ${conductaTxt}
 ${companerosTxt.substring(0, 1500)}
 ${waRecienteTxt}
+${emailsTxt}
+${scinfoTxt}
 
 Fecha de hoy: ${today}`;
 

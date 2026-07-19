@@ -704,6 +704,21 @@ def ingest_for_user(user_cfg: dict) -> dict:
         if wa_recientes:
             bot_context["whatsapp_reciente"] = wa_recientes
 
+        # Emails recientes
+        if "emails" in data and data["emails"]:
+            bot_context["emails_recientes"] = [
+                {"fecha": e.get("fecha", ""), "de": e.get("de", ""), "asunto": e.get("asunto", ""), "resumen": e.get("body", "")[:200]}
+                for e in data["emails"][:10]
+            ]
+
+        # SC Info
+        if "scinfo" in data and data["scinfo"]:
+            scinfo = data["scinfo"]
+            bot_context["scinfo"] = {
+                "fecha": scinfo.get("fecha", ""),
+                "contenido": scinfo.get("contenido", "")[:1000]
+            }
+
         bot_context_file = os.path.join("data", f"bot_context_{user_id}.json")
         with open(bot_context_file, "w", encoding="utf-8") as f:
             json.dump(bot_context, f, indent=2, ensure_ascii=False)
