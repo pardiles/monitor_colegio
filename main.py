@@ -294,7 +294,7 @@ def ingest_oscar() -> dict:
 
 
 def generate_and_send(mode: str, data: dict, is_weekly: bool = False,
-                     user_id: str = "pablo", user_cfg: dict = None):
+                     user_id: str = "pablo", user_cfg: dict = None, force_send: bool = False):
     """Genera resumen con Claude y envía por WhatsApp."""
     
     # Skip en días sin relevancia (viernes PM, sábado, domingo AM)
@@ -308,7 +308,7 @@ def generate_and_send(mode: str, data: dict, is_weekly: bool = False,
         (weekday == 6 and mode == "morning")       # domingo AM
     )
     
-    if skip_if_empty and not is_weekly:
+    if skip_if_empty and not is_weekly and not force_send:
         calendario = data.get("calendario_persistente", [])
         # Verificar si hay eventos para hoy o mañana
         today_str = today.strftime("%Y-%m-%d")
@@ -368,11 +368,20 @@ MAX_USERS_PER_INSTANCE = 8
 
 def _load_users() -> list:
     """Cargar lista de usuarios.
-    Lee de config/users/ (archivos individuales, sync desde S3) 
-    y de config/users.json (legacy, local).
+    Sincroniza desde S3 primero, luego lee local.
     """
     users = []
     seen_ids = set()
+
+    # 0. Sync desde S3 (descargar configs actualizados por la landing)
+    try:
+        import subprocess
+        subprocess.run(
+            ["aws", "s3", "sync", "s3://monitor-colegio-config-669294688330/config/users/", "config/users/", "--region", "us-east-2"],
+            capture_output=True, timeout=30
+        )
+    except Exception:
+        pass
 
     # 1. Archivos individuales (desde S3 via sync)
     users_dir = os.path.join("config", "users")
@@ -723,7 +732,7 @@ def main():
                 print(f"{'🟡' * 25}")
                 data = ingest_for_user(user_cfg)
                 if data:
-                    generate_and_send(mode, data, is_weekly=is_weekly, user_id=target_user, user_cfg=user_cfg)
+                    generate_and_send(mode, data, is_weekly=is_weekly, user_id=target_user, user_cfg=user_cfg, force_send=True)
             else:
                 print(f"❌ Usuario '{target_user}' no encontrado")
             sys.exit(0)
