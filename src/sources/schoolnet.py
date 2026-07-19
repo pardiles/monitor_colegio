@@ -106,10 +106,10 @@ class SchoolNetClient:
         """Obtener comunicaciones/circulares del colegio."""
         return self._get("comunicaciones/index")
 
-    def get_calificaciones(self, alumno: int = 0) -> Dict:
-        """Obtener calificaciones por alumno (0=primero, 1=segundo)."""
+    def get_calificaciones(self, alumno: int = 0, periodo: int = 1) -> Dict:
+        """Obtener calificaciones por alumno y periodo (1=primer semestre, 2=segundo)."""
         self.select_alumno(alumno)
-        return self._get("calificaciones/index", {"tipocalificacion": "nota", "alumno": alumno})
+        return self._get("calificaciones/index", {"tipocalificacion": "nota", "alumno": alumno, "periodo": periodo})
 
     def get_asistencia(self, alumno: int = 0) -> Dict:
         """Obtener asistencia y conducta por alumno."""

@@ -636,20 +636,26 @@ def ingest_for_user(user_cfg: dict) -> dict:
                 cal_data = data[key]
                 if isinstance(cal_data, dict):
                     hijo_name = key.replace("calificaciones_", "")
-                    # SchoolNet: asignaturas en "nombre", notas en estructura de periodos
-                    asigs = cal_data.get("asignaturas", cal_data.get("calificaciones", []))
-                    if not asigs:
-                        # SchoolNet format: "nombre" = lista de asignaturas
-                        nombres_asigs = cal_data.get("nombre", [])
-                        if isinstance(nombres_asigs, list) and nombres_asigs:
+                    # SchoolNet: "nombre" = asignaturas, "pf" = promedios finales
+                    nombres_asigs = cal_data.get("nombre", [])
+                    pf = cal_data.get("pf", [])
+                    promedios_gen = cal_data.get("promedios", {})
+                    if isinstance(nombres_asigs, list) and nombres_asigs:
+                        notas = []
+                        for i, asig in enumerate(nombres_asigs):
+                            nota = pf[i] if i < len(pf) and pf[i] else ""
+                            notas.append({"asignatura": asig, "promedio": nota})
+                        bot_context.setdefault("calificaciones", {})[hijo_name] = notas
+                        if isinstance(promedios_gen, dict) and promedios_gen.get("anual"):
+                            bot_context.setdefault("promedios_generales", {})[hijo_name] = promedios_gen.get("anual", "")
+                    # Fallback para otras plataformas
+                    elif cal_data.get("asignaturas") or cal_data.get("calificaciones"):
+                        asigs = cal_data.get("asignaturas", cal_data.get("calificaciones", []))
+                        if isinstance(asigs, list):
                             bot_context.setdefault("calificaciones", {})[hijo_name] = [
-                                {"asignatura": n} for n in nombres_asigs if isinstance(n, str)
+                                {"asignatura": a.get("nombre", a.get("asignatura", "")), "promedio": a.get("promedio", "")}
+                                for a in asigs[:20] if isinstance(a, dict)
                             ]
-                    elif isinstance(asigs, list):
-                        bot_context.setdefault("calificaciones", {})[hijo_name] = [
-                            {"asignatura": a.get("nombre", a.get("asignatura", "")), "promedio": a.get("promedio", "")}
-                            for a in asigs[:20] if isinstance(a, dict)
-                        ]
         # Conducta/anotaciones (por hijo)
         for key in data:
             if key.startswith("conducta_"):
