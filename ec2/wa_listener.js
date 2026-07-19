@@ -76,18 +76,60 @@ async function botRespond(sock, groupId, question, userCfg) {
 
     // Cargar contexto enriquecido (generado por el scraping diario)
     const botContext = loadJSON(path.join(DATA_DIR, `bot_context_${userCfg.id}.json`), {});
-    const companeros = botContext.companeros ? `\nCompañeros por curso:\n${JSON.stringify(botContext.companeros).substring(0, 1000)}` : '';
-    const profesores = botContext.profesores ? `\nProfesores:\n${JSON.stringify(botContext.profesores)}` : '';
-    const calificaciones = botContext.calificaciones ? `\nCalificaciones (promedios):\n${JSON.stringify(botContext.calificaciones).substring(0, 800)}` : '';
-    const conducta = botContext.conducta ? `\nÚltimas anotaciones:\n${JSON.stringify(botContext.conducta).substring(0, 600)}` : '';
-    const asistencia = botContext.asistencia ? `\nAsistencia:\n${JSON.stringify(botContext.asistencia)}` : '';
-    const waReciente = botContext.whatsapp_reciente ? `\nMensajes recientes en grupos WA:\n${JSON.stringify(botContext.whatsapp_reciente).substring(0, 1000)}` : '';
+    
+    // Formatear compañeros como texto legible
+    let companerosTxt = '';
+    if (botContext.companeros) {
+        for (const [hijo, lista] of Object.entries(botContext.companeros)) {
+            companerosTxt += `\nCompañeros de ${hijo}: ${lista.map(c => c.nombre).join(', ')}`;
+        }
+    }
+
+    // Formatear calificaciones como texto
+    let calificacionesTxt = '';
+    if (botContext.calificaciones) {
+        for (const [hijo, asigs] of Object.entries(botContext.calificaciones)) {
+            if (Array.isArray(asigs) && asigs.length > 0) {
+                const notas = asigs.filter(a => a.asignatura && a.promedio).map(a => `${a.asignatura}: ${a.promedio}`).join(', ');
+                if (notas) calificacionesTxt += `\nNotas de ${hijo}: ${notas}`;
+            }
+        }
+    }
+
+    // Formatear conducta
+    let conductaTxt = '';
+    if (botContext.conducta) {
+        for (const [hijo, anots] of Object.entries(botContext.conducta)) {
+            if (Array.isArray(anots) && anots.length > 0) {
+                conductaTxt += `\nAnotaciones de ${hijo}: ${anots.slice(-5).map(a => typeof a === 'string' ? a : JSON.stringify(a)).join('; ').substring(0, 300)}`;
+            }
+        }
+    }
+
+    // Asistencia
+    let asistenciaTxt = '';
+    if (botContext.asistencia) {
+        for (const [hijo, data] of Object.entries(botContext.asistencia)) {
+            asistenciaTxt += `\nAsistencia ${hijo}: ${data.inasistencias || 0} inasistencias`;
+        }
+    }
+
+    // WA reciente
+    let waRecienteTxt = '';
+    if (botContext.whatsapp_reciente) {
+        for (const [grupo, msgs] of Object.entries(botContext.whatsapp_reciente)) {
+            if (msgs.length > 0) {
+                waRecienteTxt += `\nGrupo ${grupo} (últimos msgs): ${msgs.slice(-5).map(m => `${m.from}: ${m.body}`).join(' | ').substring(0, 300)}`;
+            }
+        }
+    }
+
+    const profesoresTxt = (botContext.profesores || []).map(p => `${p.hijo} (${p.curso}) - Prof jefe: ${p.profesora_jefe}${p.email ? ' - ' + p.email : ''}`).join('\n');
 
     const context = `Hijos:
 ${hijos}
 
 Colegio: ${colegio.nombre || ''}
-${colegio.schoolnet_user ? 'Plataforma: SchoolNet (Colegium)' : ''}
 
 Extraprogramáticas:
 ${extras || 'No configuradas'}
@@ -99,7 +141,14 @@ ${JSON.stringify(horarios).substring(0, 1500)}
 
 Próximos eventos (calendario):
 ${eventosStr || 'Sin eventos próximos'}
-${profesores}${calificaciones}${conducta}${asistencia}${companeros}${waReciente}
+
+Profesores:
+${profesoresTxt}
+${calificacionesTxt}
+${asistenciaTxt}
+${conductaTxt}
+${companerosTxt.substring(0, 1500)}
+${waRecienteTxt}
 
 Fecha de hoy: ${today}`;
 
@@ -213,7 +262,7 @@ async function startSession(userCfg) {
             // Monitor group (instrucciones de los padres)
             if (isMonitor) {
                 // Ignorar mensajes del bot (emojis de resumen)
-                if (body.startsWith('\u{1F4CB}') || body.startsWith('\u{1F4EC}') || body.startsWith('\u{1F680}') || body.startsWith('\u{1F9EA}') || body.startsWith('🤖') || body.startsWith('✅')) return;
+                if (body.startsWith('\u{1F4CB}') || body.startsWith('\u{1F4EC}') || body.startsWith('\u{1F680}') || body.startsWith('\u{1F9EA}') || body.startsWith('🤖') || body.startsWith('✅') || body.startsWith('📬') || body.startsWith('📋') || body.startsWith('⏳') || body.startsWith('#') || body.startsWith('👋')) return;
 
                 // Si es pregunta (tiene ?), NO guardar como instrucción — solo responder
                 if (body.includes('?')) {
