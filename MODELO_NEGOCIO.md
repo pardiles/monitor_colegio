@@ -72,3 +72,52 @@ Basado en $0.21 USD/usuario/mes (arquitectura escalable con Gemini Flash + proxy
 
 ## Notas pendientes
 - (por completar)
+
+## Plan de contratación
+
+### Costos de equipo
+
+| Rol | Base/mes | Comisión | Total estimado/mes (con carga) |
+|---|---|---|---|
+| Fundador (Pablo) | - | - | $8.000.000 (sueldo objetivo) |
+| Vendedor | $800.000-1.000.000 | 12% del primer año por colegio nuevo | ~$3.000.000 promedio |
+| IT/Respaldo | $1.500.000-2.000.000 | - | ~$2.500.000 |
+
+**Total equipo completo: $13.500.000/mes**
+
+### Comisión del vendedor (detalle)
+- Colegio mediano (800 alumnos): contrato $15.6M/año × 12% = $1.870.000 por colegio cerrado
+- Si cierra 2 colegios/mes: base $1M + comisiones $3.7M = $4.7M (meses buenos)
+- Promedio mensualizado: ~$3M/mes (incluye meses sin cierre)
+
+### Cuándo contratar
+
+| Hito | Colegios activos | Ingreso/mes | Acción |
+|---|---|---|---|
+| Solo | 1-4 | $1.3-5.2M | Vender + operar solo |
+| +Vendedor | 5 | $6.5M | Contratar vendedor (se paga solo con 1 colegio nuevo) |
+| +IT | 8 | $10.4M | Contratar respaldo IT (onboarding + soporte) |
+| Equipo completo | 11+ | $14.3M+ | Cubiertos todos los costos con margen |
+
+### Breakeven con equipo completo
+
+| Colegios | Ingreso/mes | Gasto total/mes | Margen libre/mes |
+|---|---|---|---|
+| 11 | $14.300.000 | $13.500.000 | $800.000 |
+| 13 | $16.900.000 | $13.500.000 | $3.400.000 |
+| 15 | $19.500.000 | $13.500.000 | $6.000.000 |
+| 20 | $26.000.000 | $13.500.000 | $12.500.000 |
+
+### Proyección con equipo (año 2)
+
+Asumiendo vendedor cierra 2-3 colegios/mes:
+
+| Mes (año 2) | Colegios | Ingreso/mes | Profit después de costos |
+|---|---|---|---|
+| 1 | 12 | $15.600.000 | $2.100.000 |
+| 3 | 16 | $20.800.000 | $7.300.000 |
+| 6 | 22 | $28.600.000 | $15.100.000 |
+| 12 | 34 | $44.200.000 | $30.700.000 |
+
+**Año 2 con equipo: ~$250M ingreso / ~$180M profit**
+
