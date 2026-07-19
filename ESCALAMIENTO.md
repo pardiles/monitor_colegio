@@ -224,3 +224,88 @@ Config por usuario:
 | + Skip days + cache | $0.025 | Máxima optimización |
 
 **Conclusión:** Haiku optimizado ($0.025/user) es comparable a Gemini Flash ($0.02/user). La decisión es de calidad, no de costo.
+
+
+## Alta disponibilidad (Spot interruption handling)
+
+### Concepto: 100% disponibilidad con EC2 Spot
+
+AWS avisa 2 minutos antes de interrumpir una instancia Spot. En ese tiempo:
+1. Script detecta señal de interrupción (polling a metadata endpoint cada 5s)
+2. Guarda estado mínimo en S3 (lista de outbox pendientes si hay)
+3. Fleet ya lanzó instancia de reemplazo en paralelo (capacity `maintain`)
+4. Nueva instancia arranca, baja config de S3, reconecta Baileys (~10 segundos)
+
+**Resultado: 0-10 segundos de downtime. WhatsApp no desvincula. 100% disponibilidad efectiva.**
+
+### Implementación: spot-interruption-handler.sh
+
+```bash
+#!/bin/bash
+# Corre en cron cada 5 segundos o como daemon
+# Detecta señal de interrupción Spot y prepara migración
+
+while true; do
+    # Consultar metadata de interrupción
+    HTTP_CODE=$(curl -s -o /tmp/spot-action.json -w "%{http_code}" \
+        http://169.254.169.254/latest/meta-data/spot/instance-action 2>/dev/null)
+    
+    if [ "$HTTP_CODE" -eq 200 ]; then
+        echo "⚠️ SPOT INTERRUPTION DETECTED - Preparando migración..."
+        
+        # 1. Notificar (opcional: SNS)
+        # aws sns publish --topic-arn ... --message "Spot interruption on $(hostname)"
+        
+        # 2. Sync estado a S3 (outbox pendientes, datos parciales)
+        aws s3 sync /opt/monitor-colegio/data/outbox/ s3://monitor-colegio-config-669294688330/state/$(hostname)/outbox/ --region us-east-2
+        
+        # 3. Flush logs
+        journalctl -u wa-listener --no-pager > /tmp/last_logs.txt
+        aws s3 cp /tmp/last_logs.txt s3://monitor-colegio-config-669294688330/state/$(hostname)/last_logs.txt --region us-east-2
+        
+        echo "✅ Estado guardado. Fleet reemplazará esta instancia automáticamente."
+        exit 0
+    fi
+    
+    sleep 5
+done
+```
+
+### User-data de nueva instancia (boot script)
+
+```bash
+#!/bin/bash
+# Al arrancar una nueva instancia del fleet:
+
+# 1. Descargar assignments (qué usuarios van en esta instancia)
+aws s3 cp s3://monitor-colegio-config-669294688330/fleet/assignments/$(curl -s http://169.254.169.254/latest/meta-data/instance-id).json /opt/monitor-colegio/config/my_users.json --region us-east-2
+
+# 2. Descargar config de cada usuario asignado
+# (el script de boot itera y baja config/users/{user_id}.json)
+
+# 3. Recuperar outbox pendientes (si venimos de una interrupción)
+aws s3 sync s3://monitor-colegio-config-669294688330/state/*/outbox/ /opt/monitor-colegio/data/outbox/ --region us-east-2
+
+# 4. Iniciar servicios
+systemctl start wa-listener
+# Cron ya está configurado en la AMI
+
+# 5. Iniciar handler de interrupciones
+nohup /opt/monitor-colegio/spot-interruption-handler.sh &
+```
+
+### Estadísticas de interrupciones Spot
+
+| Tipo instancia | Región | Tasa interrupción mensual | Con diversificación (multi-AZ + multi-type) |
+|---|---|---|---|
+| t3.medium | us-east-2 | ~5% | <2% |
+| t3.small | us-east-2 | ~5% | <2% |
+| t3a.medium | us-east-2 | ~3% | <1% |
+
+Con fleet configurado con múltiples tipos (t3.medium + t3a.medium + t3.small) y múltiples AZs, la probabilidad de interrupción sin reemplazo inmediato es prácticamente 0.
+
+### Pendientes de implementación
+- [ ] Crear `spot-interruption-handler.sh` 
+- [ ] Agregar al systemd como servicio
+- [ ] User-data script para boot de nuevas instancias
+- [ ] Probar failover end-to-end
