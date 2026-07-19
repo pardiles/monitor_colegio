@@ -12,13 +12,14 @@ Uso:
 import os
 import sys
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 
 load_dotenv()
 
 CHILE_TZ = ZoneInfo("America/Santiago")
+DIAS_ES = {0:'Lunes',1:'Martes',2:'Miércoles',3:'Jueves',4:'Viernes',5:'Sábado',6:'Domingo'}
 
 from src.sources.calendario import fetch_evaluaciones
 from src.sources.schoolnet import SchoolNetClient
@@ -296,6 +297,30 @@ def generate_and_send(mode: str, data: dict, is_weekly: bool = False,
                      user_id: str = "pablo", user_cfg: dict = None):
     """Genera resumen con Claude y envía por WhatsApp."""
     
+    # Skip en días sin relevancia (viernes PM, sábado, domingo AM)
+    # Solo enviar si hay eventos para hoy/mañana o novedades
+    today = datetime.now(CHILE_TZ)
+    weekday = today.weekday()  # 0=lun, 4=vie, 5=sab, 6=dom
+    
+    skip_if_empty = (
+        (weekday == 4 and mode == "evening") or   # viernes PM
+        (weekday == 5) or                          # sábado (AM y PM)
+        (weekday == 6 and mode == "morning")       # domingo AM
+    )
+    
+    if skip_if_empty and not is_weekly:
+        calendario = data.get("calendario_persistente", [])
+        # Verificar si hay eventos para hoy o mañana
+        today_str = today.strftime("%Y-%m-%d")
+        tomorrow = (today + timedelta(days=1)).strftime("%Y-%m-%d")
+        has_events = any(e["fecha"] in (today_str, tomorrow) for e in calendario)
+        # Verificar si hay novedades (emails, WA, comunicaciones nuevas)
+        has_news = bool(data.get("emails")) or any(k.startswith("whatsapp_") and data[k] for k in data)
+        
+        if not has_events and not has_news:
+            print(f"\n⏭️ Sin eventos ni novedades para hoy/mañana ({DIAS_ES[weekday]} {mode}). No se envía resumen.")
+            return None
+
     print(f"\n{'='*50}")
     print(f"RESUMEN ({mode}{' - SEMANAL' if is_weekly else ''}) - {user_id}")
     print(f"{'='*50}")
