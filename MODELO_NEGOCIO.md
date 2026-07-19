@@ -282,8 +282,7 @@ Servicio B2B para colegios particulares. Resúmenes diarios automáticos por Wha
 | Paquete | Incluye | Precio/mes |
 |---|---|---|
 | **Básico** | Resúmenes AM/PM por WA, calendario, fuentes del colegio. Hasta 500 alumnos. | $1.000.000 + $1.000/alumno extra |
-| **Comunicación** | Básico + canal directo del colegio por WA + read receipts + reportes de lectura | $2.000.000 + $1.000/alumno extra |
-| **Full** | Comunicación + inteligencia de grupos WA (sentimiento, alertas, insights semanales) | $2.700.000 + $1.000/alumno extra |
+| **Full** | Básico + canal directo del colegio por WA + read receipts + reportes de lectura + inteligencia de grupos WA (sentimiento, alertas, insights semanales) | $2.700.000 + $1.000/alumno extra |
 
 ### Condiciones
 - Primer mes gratis (prueba)
