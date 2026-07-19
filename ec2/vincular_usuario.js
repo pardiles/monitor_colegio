@@ -198,6 +198,14 @@ async function createMonitorGroup(sock) {
         const groupId = group.id;
         console.log(`[${userId}] ✅ Grupo creado: ${groupId}`);
 
+        // Hacer admin a todos los participantes
+        try {
+            await sock.groupParticipantsUpdate(groupId, destinatarios, 'promote');
+            console.log(`[${userId}] Todos los participantes son admin`);
+        } catch (e) {
+            console.log(`[${userId}] Error promoviendo admins: ${e.message}`);
+        }
+
         // Poner descripción del grupo (dinámica con nombres de hijos)
         try {
             const hijosNames = (userCfg.hijos || []).map(h => h.nombre || h.nombre_completo?.split(' ')[0] || '').filter(Boolean);
