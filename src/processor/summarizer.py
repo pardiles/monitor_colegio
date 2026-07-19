@@ -4,7 +4,6 @@ Soporta múltiples usuarios con contexto dinámico.
 """
 
 import json
-import anthropic
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from typing import Dict, Any, Optional
@@ -237,12 +236,26 @@ En el semanal SÍ incluir TODO del calendario_persistente para esa semana.
 
 
 class Summarizer:
-    """Genera resúmenes usando Claude Haiku."""
+    """Genera resúmenes usando Claude Haiku o Gemini Flash."""
 
-    def __init__(self, api_key: str, user_cfg: Optional[Dict] = None):
-        self.client = anthropic.Anthropic(api_key=api_key)
-        self.model = "claude-haiku-4-5-20251001"
+    def __init__(self, api_key: str, user_cfg: Optional[Dict] = None, engine: str = "haiku"):
+        """
+        Args:
+            api_key: API key (Anthropic o Google según engine)
+            user_cfg: Config del usuario
+            engine: "haiku" (Claude) o "gemini" (Gemini 2.0 Flash)
+        """
+        self.engine = engine
         self.context = build_context(user_cfg)
+
+        if engine == "gemini":
+            from google import genai
+            self.gemini_client = genai.Client(api_key=api_key)
+            self.gemini_model = "gemini-2.0-flash"
+        else:
+            import anthropic
+            self.client = anthropic.Anthropic(api_key=api_key)
+            self.model = "claude-haiku-4-5-20251001"
 
     def generate_morning_briefing(self, data: Dict[str, Any], is_weekly: bool = False) -> str:
         """Genera el briefing matutino."""
@@ -261,13 +274,8 @@ Datos disponibles:
 
 Genera el briefing matutino."""
 
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=1500 if is_weekly else 1200,
-            system=build_morning_prompt(self.context),
-            messages=[{"role": "user", "content": user_content}],
-        )
-        return response.content[0].text
+        system_prompt = build_morning_prompt(self.context)
+        return self._call_llm(system_prompt, user_content, max_tokens=1500 if is_weekly else 1200)
 
     def generate_evening_summary(self, data: Dict[str, Any], is_weekly: bool = False) -> str:
         """Genera el resumen nocturno."""
@@ -286,13 +294,29 @@ Datos del día:
 
 Genera el resumen nocturno."""
 
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=2000 if is_weekly else 1500,
-            system=build_evening_prompt(self.context),
-            messages=[{"role": "user", "content": user_content}],
-        )
-        return response.content[0].text
+        system_prompt = build_evening_prompt(self.context)
+        return self._call_llm(system_prompt, user_content, max_tokens=2000 if is_weekly else 1500)
+
+    def _call_llm(self, system_prompt: str, user_content: str, max_tokens: int = 1500) -> str:
+        """Llama al LLM seleccionado (Haiku o Gemini)."""
+        if self.engine == "gemini":
+            # Gemini usa un solo prompt (system + user concatenados)
+            full_prompt = f"{system_prompt}\n\n---\n\n{user_content}"
+            response = self.gemini_client.models.generate_content(
+                model=self.gemini_model,
+                contents=full_prompt,
+                config={"max_output_tokens": max_tokens, "temperature": 0.3},
+            )
+            return response.text
+        else:
+            # Claude (Anthropic)
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_content}],
+            )
+            return response.content[0].text
 
     def _format_data(self, data: Dict[str, Any]) -> str:
         """Formatea los datos para el prompt. Orden de prioridad:

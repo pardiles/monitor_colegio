@@ -326,8 +326,10 @@ def generate_and_send(mode: str, data: dict, is_weekly: bool = False,
     print(f"{'='*50}")
 
     # Generar resumen
-    print("\n🤖 Generando resumen con Claude...")
-    summarizer = Summarizer(os.getenv("ANTHROPIC_API_KEY"), user_cfg=user_cfg)
+    engine = os.getenv("AI_ENGINE", "haiku")  # "haiku" o "gemini"
+    api_key = os.getenv("GEMINI_API_KEY") if engine == "gemini" else os.getenv("ANTHROPIC_API_KEY")
+    print(f"\n🤖 Generando resumen con {engine}...")
+    summarizer = Summarizer(api_key, user_cfg=user_cfg, engine=engine)
     
     if mode == "morning":
         message = summarizer.generate_morning_briefing(data, is_weekly=is_weekly)
