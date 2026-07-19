@@ -74,10 +74,11 @@ async function start() {
 
     sock.ev.on('creds.update', saveCreds);
 
-    // Si es pairing code, solicitarlo apenas conecte al WS (antes de QR)
-    if (method === 'code' && phone) {
-        // Esperar a que el socket esté listo para solicitar pairing code
-        setTimeout(async () => {
+    sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
+
+        // Pairing code: solicitar cuando recibimos el primer QR (indica que está listo para vincular)
+        if (qr && method === 'code' && phone) {
             try {
                 const cleanPhone = phone.replace(/[^0-9]/g, '');
                 console.log(`[${userId}] Solicitando pairing code para ${cleanPhone}...`);
@@ -94,11 +95,8 @@ async function start() {
             } catch (e) {
                 console.error(`[${userId}] Error pairing code: ${e.message}`);
             }
-        }, 3000);
-    }
-
-    sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect, qr } = update;
+            return; // No procesar QR si estamos en modo code
+        }
 
         if (qr && method !== 'code') {
             console.log(`[${userId}] QR generado, subiendo a S3...`);
