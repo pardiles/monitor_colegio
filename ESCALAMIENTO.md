@@ -177,6 +177,46 @@ Config por usuario:
 - Mitigación: conexiones estables, sin spam, user-agent consistente
 - Si hay ban → agregar proxy es 1 línea de config, no requiere rediseño
 
+### A gran escala (500+ users): proxy + jitter obligatorio
+
+**Riesgos de detección por Meta a escala:**
+- 1000 cuentas que reconectan al mismo segundo después de un restart
+- Todas con el mismo user-agent ("Chrome Mac OS 14.4.1")
+- Todas envían mensajes exactamente a las 7:00AM y 20:00PM
+- Cero interacción humana (no abren media, no leen, no escriben)
+
+**Mitigaciones obligatorias a partir de 500 users:**
+
+| Mitigación | Implementación | Impacto |
+|---|---|---|
+| Jitter en envío | Randomizar ±10 min la hora de envío por usuario | Evita patrón detectable de "todos a las 7:00" |
+| Jitter en reconexión | Al reconectar, esperar random 5-60s entre cada sesión | No reconectar 100 cuentas al mismo segundo |
+| Variar user-agent | Rotar entre 3-5 versiones de Chrome/Safari | No todos idénticos |
+| Proxy residencial | 1 IP cada 10 users (ya documentado) | Cada grupo parece una casa distinta |
+| Simular actividad mínima | Marcar mensajes como "leídos" ocasionalmente | Parecer más humano |
+
+**Código de jitter (agregar a main.py y wa_listener.js):**
+```python
+# main.py - jitter antes de enviar
+import random
+jitter = random.randint(0, 600)  # 0-10 minutos
+time.sleep(jitter)
+```
+
+```javascript
+// wa_listener.js - jitter al reconectar
+const jitter = Math.floor(Math.random() * 30000); // 0-30 segundos
+setTimeout(() => startSession(userCfg), jitter);
+```
+
+**Peor escenario si Meta detecta:**
+- Desvincula sesiones (usuario tiene que re-escanear QR)
+- NO demandan (no somos spammers)
+- NO banean el número del usuario (solo desvinculan el dispositivo web)
+- Solución: re-vincular + cambiar proxy
+
+**Nota:** empresas como Respond.io, Wati operan a mayor escala con enfoque similar sin problemas. Meta persigue spammers masivos (miles de mensajes/hora), no servicios legítimos de bajo volumen (2 msgs/día/user).
+
 ## Pasos de implementación
 
 ### Fase 1: Preparar AMI (cuando lleguemos a 10 users)
