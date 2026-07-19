@@ -419,3 +419,30 @@ Servicio B2B para colegios particulares. Resúmenes diarios automáticos por Wha
 | Relación con directores | **Alta** | Confianza se construye con tiempo |
 
 **Conclusión:** la barrera técnica es baja pero la barrera comercial es alta. El que llega primero a un colegio y funciona bien, se queda. El costo de cambio para el colegio es alto (re-vincular 500 WhatsApps).
+
+
+## Features futuros (backlog)
+
+### Bot conversacional (responde preguntas del apoderado)
+- El apoderado pregunta en el grupo Monitor: "¿a qué hora sale Franco mañana?"
+- El bot responde automáticamente con la info que ya tiene del calendario/horarios
+- **Costo adicional:** +$0.08/user/mes (Gemini Flash) — negligible
+- **Valor:** convierte al bot de "resumen pasivo" a asistente activo. Más sticky. Reduce llamadas a secretaría.
+- **Riesgo:** si responde mal, genera desconfianza. Requiere disclaimer + fallback "no estoy seguro, confirma con el colegio."
+
+### Alertas proactivas de conflictos en grupos WA
+- Si se detectan 10+ mensajes negativos en 1 hora sobre un tema → alerta inmediata al director
+- Análisis de sentimiento en tiempo real con AI
+- **Valor para el colegio:** se entera antes de que llegue el reclamo formal
+
+### Personalización de horarios/frecuencia por apoderado
+- Solo AM / Solo PM / Ambos
+- Hora preferida del resumen
+- Solo alertas urgentes (sin resumen diario)
+- Solo días de semana
+
+### Pendientes legales
+- Disclaimer de AI: "resúmenes pueden contener errores, confirmar info crítica con el colegio"
+- Términos de servicio (contrato con colegio)
+- Política de privacidad (qué datos leemos, cómo los usamos)
+- Checkbox de aceptación en landing de registro
