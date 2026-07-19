@@ -44,6 +44,23 @@ function cleanOld(arr) {
     return arr.filter(m => (m.timestamp || 0) > weekAgo);
 }
 
+// Historial de conversación por usuario (últimas 5 interacciones)
+const _conversationHistory = {};
+function getConversationHistory(userId, newQuestion) {
+    if (!_conversationHistory[userId]) _conversationHistory[userId] = [];
+    const history = _conversationHistory[userId];
+    // Agregar nueva pregunta
+    history.push({ role: 'user', content: newQuestion });
+    // Mantener últimas 10 mensajes (5 pares user/assistant)
+    while (history.length > 10) history.shift();
+    return [...history];
+}
+function addBotResponse(userId, response) {
+    if (!_conversationHistory[userId]) _conversationHistory[userId] = [];
+    _conversationHistory[userId].push({ role: 'assistant', content: response });
+    while (_conversationHistory[userId].length > 10) _conversationHistory[userId].shift();
+}
+
 /**
  * Bot conversacional: responde preguntas del apoderado en el grupo Monitor.
  */
@@ -220,7 +237,7 @@ Fecha de hoy: ${today}`;
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 200,
         system: `Eres un bot de WhatsApp que responde preguntas de un apoderado sobre el colegio de sus hijos. Responde breve (1-3 líneas máximo), amigable, útil. Si no tienes la info, di "No tengo esa info, mejor confirma con el colegio 📞". Contexto:\n${context}`,
-        messages: [{ role: 'user', content: question }],
+        messages: getConversationHistory(userCfg.id, question),
     });
 
     return new Promise((resolve) => {
@@ -246,6 +263,7 @@ Fecha de hoy: ${today}`;
                         await sock.sendPresenceUpdate('composing', groupId);
                         await new Promise(r => setTimeout(r, delay));
                         await sock.sendMessage(groupId, { text: `🤖 ${answer}` });
+                        addBotResponse(userCfg.id, answer);
                         console.log(`[${userCfg.id}][BOT] Respondió: ${answer.substring(0, 50)}`);
                     }
                 } catch (e) {
@@ -361,6 +379,28 @@ async function startSession(userCfg) {
                 messages[label] = cleanOld(messages[label]);
                 saveJSON(WA_MESSAGES_FILE, messages);
                 console.log(`[${userId}][${label}] ${entry.from}: ${(body || entry.attachment?.filename || '').substring(0, 50)}`);
+            }
+        }
+    });
+
+    // Monitorear participantes del grupo Monitor (max 2 + bot)
+    sock.ev.on('group-participants.update', async (update) => {
+        if (update.action === 'add' && monitorGroup && update.id === monitorGroup) {
+            // Verificar si excede max participantes (2 destinatarios + bot = 3)
+            try {
+                const meta = await sock.groupMetadata(monitorGroup);
+                if (meta.participants.length > 3) {
+                    // Expulsar a los nuevos (que no son destinatarios originales)
+                    const allowed = new Set((waCfg.destinatarios_monitor || []).map(n => n + '@s.whatsapp.net'));
+                    const toRemove = update.participants.filter(p => !allowed.has(p));
+                    if (toRemove.length > 0) {
+                        await sock.groupParticipantsUpdate(monitorGroup, toRemove, 'remove');
+                        await sock.sendMessage(monitorGroup, { text: '⚠️ Este grupo acepta máximo 2 destinatarios. Para cambiar a alguien, escribe: "sacar a [nombre]" y "agregar a +56XXXXXXXXX [nombre]". O hazlo desde la landing.' });
+                        console.log(`[${userId}][GROUP] Expulsados: ${toRemove.join(', ')}`);
+                    }
+                }
+            } catch (e) {
+                console.log(`[${userId}][GROUP] Error monitoreando: ${e.message}`);
             }
         }
     });
