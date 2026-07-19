@@ -207,7 +207,7 @@ async function createMonitorGroup(sock) {
         }));
 
         // Enviar mensaje de bienvenida al grupo
-        const welcomeMsg = `👋 ¡Bienvenido al Monitor Colegio!\n\nEste grupo te enviará resúmenes diarios:\n• 📋 7:00 AM - Lo que pasa hoy\n• 📬 20:00 - Lo nuevo del día + mañana\n\n💡 Puedes escribir acá instrucciones y el bot las tomará en cuenta:\n• "Simón no va al colegio mañana"\n• "Esperanza tiene cumpleaños viernes 17:00"\n\n📌 Tip: Fija este grupo arriba (mantén presionado → 📌) para no perderte los resúmenes.\n\nTu primer resumen llegará en unos minutos... ⏳`;
+        const welcomeMsg = `👋 ¡Bienvenido al Monitor Colegio!\n\nEste grupo te enviará resúmenes diarios:\n• 📋 7:00 AM - Lo que pasa hoy\n• 📬 20:00 - Lo nuevo del día + mañana\n\n🤖 *Asistente 24/7:* Puedes hacerle preguntas al bot y te responde al instante:\n• "¿A qué hora sale Franco mañana?"\n• "¿Qué tiene Blanca el miércoles?"\n• "¿Cuándo es la próxima reunión?"\n\n💡 También puedes escribir instrucciones y el bot las tomará en cuenta:\n• "Simón no va al colegio mañana"\n• "Esperanza tiene cumpleaños viernes 17:00"\n\n📌 Tip: Fija este grupo arriba (mantén presionado → 📌) para no perderte los resúmenes.\n\nTu primer resumen llegará en unos minutos... ⏳`;
         await sock.sendMessage(groupId, { text: welcomeMsg });
         console.log(`[${userId}] Mensaje de bienvenida enviado al grupo`);
 

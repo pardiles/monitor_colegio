@@ -10,12 +10,25 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, downloadMediaMessage } = require('@whiskeysockets/baileys');
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
 
 const BASE_DIR = '/opt/monitor-colegio';
 const DATA_DIR = path.join(BASE_DIR, 'data');
 const ATTACHMENTS_DIR = path.join(DATA_DIR, 'attachments');
 const USERS_FILE = path.join(BASE_DIR, 'config', 'users.json');
 const WA_MESSAGES_FILE = path.join(DATA_DIR, 'whatsapp_messages.json');
+
+// Cargar API key de Anthropic desde .env
+let ANTHROPIC_API_KEY = '';
+try {
+    const envFile = fs.readFileSync(path.join(BASE_DIR, '.env'), 'utf-8');
+    for (const line of envFile.split('\n')) {
+        if (line.startsWith('ANTHROPIC_API_KEY=')) {
+            ANTHROPIC_API_KEY = line.split('=')[1].trim().replace(/['"]/g, '');
+        }
+    }
+} catch {}
+
 
 function loadJSON(file, fallback) {
     try { return JSON.parse(fs.readFileSync(file, 'utf-8')); }
@@ -29,6 +42,78 @@ function saveJSON(file, data) {
 function cleanOld(arr) {
     const weekAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
     return arr.filter(m => (m.timestamp || 0) > weekAgo);
+}
+
+/**
+ * Bot conversacional: responde preguntas del apoderado en el grupo Monitor.
+ */
+async function botRespond(sock, groupId, question, userCfg) {
+    if (!ANTHROPIC_API_KEY) return;
+
+    // Solo responder a preguntas (contiene ?)
+    if (!question.includes('?')) return;
+
+    // No responder a mensajes propios o del bot
+    if (question.startsWith('🤖') || question.startsWith('📋') || question.startsWith('📬')) return;
+
+    // Construir contexto del usuario
+    const hijos = (userCfg.hijos || []).map(h => `${h.nombre} (${h.curso})`).join(', ');
+    const extras = (userCfg.extraprogramaticas || []).map(e => `${e.nombre}: ${e.dia} ${e.horario} (${e.hijo}) → sale ${e.hora_salida_real}`).join('\n');
+    const horarios = loadJSON(path.join(DATA_DIR, 'horarios.json'), {});
+    const calendario = loadJSON(path.join(DATA_DIR, `eventos_${userCfg.id}.json`), []);
+    const upcoming = calendario.filter(e => e.fecha >= new Date().toISOString().split('T')[0]).slice(0, 10);
+
+    const context = `Hijos: ${hijos}
+Extraprogramáticas:
+${extras}
+Horarios: ${JSON.stringify(horarios).substring(0, 1000)}
+Próximos eventos: ${JSON.stringify(upcoming).substring(0, 1000)}`;
+
+    const body = JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 200,
+        system: `Eres un bot de WhatsApp que responde preguntas de un apoderado sobre el colegio de sus hijos. Responde breve (1-3 líneas máximo), amigable, útil. Si no tienes la info, di "No tengo esa info, mejor confirma con el colegio 📞". Contexto:\n${context}`,
+        messages: [{ role: 'user', content: question }],
+    });
+
+    return new Promise((resolve) => {
+        const req = https.request({
+            hostname: 'api.anthropic.com',
+            path: '/v1/messages',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': ANTHROPIC_API_KEY,
+                'anthropic-version': '2023-06-01',
+            },
+        }, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', async () => {
+                try {
+                    const json = JSON.parse(data);
+                    const answer = json.content?.[0]?.text;
+                    if (answer) {
+                        // Delay humano (3-8 segundos)
+                        const delay = 3000 + Math.random() * 5000;
+                        await sock.sendPresenceUpdate('composing', groupId);
+                        await new Promise(r => setTimeout(r, delay));
+                        await sock.sendMessage(groupId, { text: `🤖 ${answer}` });
+                        console.log(`[${userCfg.id}][BOT] Respondió: ${answer.substring(0, 50)}`);
+                    }
+                } catch (e) {
+                    console.log(`[${userCfg.id}][BOT] Error parsing: ${e.message}`);
+                }
+                resolve();
+            });
+        });
+        req.on('error', (e) => {
+            console.log(`[${userCfg.id}][BOT] Error HTTP: ${e.message}`);
+            resolve();
+        });
+        req.write(body);
+        req.end();
+    });
 }
 
 /**
@@ -94,12 +179,17 @@ async function startSession(userCfg) {
             // Monitor group (instrucciones de los padres)
             if (isMonitor) {
                 // Ignorar mensajes del bot (emojis de resumen)
-                if (body.startsWith('\u{1F4CB}') || body.startsWith('\u{1F4EC}') || body.startsWith('\u{1F680}') || body.startsWith('\u{1F9EA}')) return;
+                if (body.startsWith('\u{1F4CB}') || body.startsWith('\u{1F4EC}') || body.startsWith('\u{1F680}') || body.startsWith('\u{1F9EA}') || body.startsWith('🤖')) return;
                 const monitorFile = path.join(DATA_DIR, `monitor_inputs_${userId}.json`);
                 const monitor = loadJSON(monitorFile, []);
                 monitor.push(entry);
                 saveJSON(monitorFile, cleanOld(monitor));
                 console.log(`[${userId}][MONITOR] ${entry.from}: ${body.substring(0, 50)}`);
+
+                // Bot conversacional: responder si es pregunta
+                botRespond(sock, groupId, body, userCfg).catch(e => {
+                    console.log(`[${userId}][BOT] Error: ${e.message}`);
+                });
             } else if (label) {
                 // Grupo del colegio
                 const messages = loadJSON(WA_MESSAGES_FILE, {});
