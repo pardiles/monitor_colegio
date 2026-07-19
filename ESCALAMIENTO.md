@@ -199,7 +199,28 @@ Config por usuario:
 - [ ] Al scale up: comprar nueva IP de proxy para la nueva instancia
 - [ ] Manejo de scale-down (mover users si instancia queda vacía)
 
-### Fase 4: Migrar AI a Gemini Flash (cuando haya 100+ users)
-- [ ] Implementar client Gemini Flash
+### Fase 4: Optimización AI (cuando haya 100+ users)
+- [ ] Implementar client Gemini Flash (ya está el código, falta API key)
 - [ ] Validar calidad de resúmenes vs Haiku
 - [ ] Switchear (feature flag por usuario para A/B test)
+- [ ] Si se queda con Haiku, implementar optimizaciones:
+
+#### Optimización de costos Claude Haiku (sin cambiar de modelo)
+
+| Optimización | Ahorro | Implementación |
+|---|---|---|
+| Reducir tokens input (pre-filtrar datos, solo próximos 3 días) | ~40% | Modificar `_format_data()` para enviar menos contexto |
+| Prompt caching (system prompt reutilizable) | ~25% | Activar cache en API Anthropic (tokens cacheados cuestan 90% menos) |
+| Batch API (envío masivo, respuesta en minutos) | 50% | Cambiar endpoint a `/v1/messages/batches`. Enviar a las 6:50AM, recibir antes de 7:00AM |
+| Skip days sin novedades (ya implementado) | ~25% | Ya funciona: viernes PM, sábado, domingo AM no se envían si no hay eventos |
+
+**Progresión de costo/user/mes con Haiku:**
+
+| Nivel | Costo/user/mes | Qué se hace |
+|---|---|---|
+| Sin optimizar (actual) | $0.10 | 2 calls/día, ~3K tokens input |
+| + Reducir input | $0.06 | Pre-filtrar datos relevantes |
+| + Batch API | $0.03 | 50% descuento por batch |
+| + Skip days + cache | $0.025 | Máxima optimización |
+
+**Conclusión:** Haiku optimizado ($0.025/user) es comparable a Gemini Flash ($0.02/user). La decisión es de calidad, no de costo.
