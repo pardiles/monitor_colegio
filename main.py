@@ -636,9 +636,16 @@ def ingest_for_user(user_cfg: dict) -> dict:
                 cal_data = data[key]
                 if isinstance(cal_data, dict):
                     hijo_name = key.replace("calificaciones_", "")
-                    # Extraer resumen de notas (asignaturas + promedios)
+                    # SchoolNet: asignaturas en "nombre", notas en estructura de periodos
                     asigs = cal_data.get("asignaturas", cal_data.get("calificaciones", []))
-                    if isinstance(asigs, list):
+                    if not asigs:
+                        # SchoolNet format: "nombre" = lista de asignaturas
+                        nombres_asigs = cal_data.get("nombre", [])
+                        if isinstance(nombres_asigs, list) and nombres_asigs:
+                            bot_context.setdefault("calificaciones", {})[hijo_name] = [
+                                {"asignatura": n} for n in nombres_asigs if isinstance(n, str)
+                            ]
+                    elif isinstance(asigs, list):
                         bot_context.setdefault("calificaciones", {})[hijo_name] = [
                             {"asignatura": a.get("nombre", a.get("asignatura", "")), "promedio": a.get("promedio", "")}
                             for a in asigs[:20] if isinstance(a, dict)
