@@ -115,6 +115,12 @@ REGLA SOBRE INSTRUCCIONES DE LOS PADRES (instrucciones_padres):
 - Tienen MÁXIMA PRIORIDAD — son cambios o aclaraciones manuales
 - Si contradicen otra fuente, las instrucciones de los padres GANAN
 - Incluir en el resumen como información confirmada
+- Si el campo está vacío o no existe, NO mencionarlo. NUNCA inventar instrucciones.
+
+REGLA ANTI-ALUCINACIÓN:
+- Si una sección de datos está vacía, OMITIRLA del resumen. No inventar contenido.
+- Si no hay novedades hoy, decir "Sin novedades" o simplemente omitir la sección.
+- NUNCA generar información que no esté explícitamente en los datos proporcionados.
 """)
 
     return "\n".join(lines)
@@ -192,7 +198,7 @@ REGLAS DE FORMATO:
 - Indicar fuente al final: (SC Info), (email), (WA 5°A), (calendario)
 - ⚠️ REUNIONES/ENTREVISTAS del calendario_persistente con hora: INCLUIR SIEMPRE con ⚠️, fecha, hora y lugar. NUNCA omitirlas.
 - SIEMPRE revisar calendario_persistente para mañana y próximos 5 días
-- Si mañana es fin de semana, mostrar info del lunes
+- Si es SÁBADO o DOMINGO: solo enviar si hay eventos/actividades para ese día o el siguiente (cumpleaños, partidos, actividades, etc.). Si no hay nada, el resumen AM dice "Sin actividades este fin de semana" y prepara para el lunes.
 - Omitir secciones vacías
 - Máximo 25 líneas
 - Español chileno natural
