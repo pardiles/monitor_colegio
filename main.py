@@ -369,9 +369,11 @@ MAX_USERS_PER_INSTANCE = 8
 def _load_users() -> list:
     """Cargar lista de usuarios.
     Sincroniza desde S3 primero, luego lee local.
+    Legacy (users.json) es la base, S3 individual hace merge encima.
     """
     users = []
     seen_ids = set()
+    users_by_id = {}
 
     # 0. Sync desde S3 (descargar configs actualizados por la landing)
     try:
@@ -383,7 +385,21 @@ def _load_users() -> list:
     except Exception:
         pass
 
-    # 1. Archivos individuales (desde S3 via sync)
+    # 1. Legacy: config/users.json (tiene config completa con colegio, schoolnet, etc.)
+    users_file = os.path.join("config", "users.json")
+    if os.path.exists(users_file):
+        try:
+            with open(users_file, "r", encoding="utf-8") as f:
+                legacy_users = json.load(f)
+            for user in legacy_users:
+                if user.get("id"):
+                    users.append(user)
+                    seen_ids.add(user["id"])
+                    users_by_id[user["id"]] = user
+        except Exception as e:
+            print(f"   ⚠️ Error leyendo users.json: {e}")
+
+    # 2. Archivos individuales (S3) — merge sobre la config legacy (no reemplazar)
     users_dir = os.path.join("config", "users")
     if os.path.isdir(users_dir):
         for filename in os.listdir(users_dir):
@@ -391,25 +407,22 @@ def _load_users() -> list:
                 filepath = os.path.join(users_dir, filename)
                 try:
                     with open(filepath, "r", encoding="utf-8") as f:
-                        user = json.load(f)
-                    if user.get("id") and user["id"] not in seen_ids:
-                        users.append(user)
-                        seen_ids.add(user["id"])
+                        s3_user = json.load(f)
+                    uid = s3_user.get("id")
+                    if not uid:
+                        continue
+                    if uid in users_by_id:
+                        # Merge: S3 data overwrites only non-empty fields
+                        for key, val in s3_user.items():
+                            if val and key != "id":  # Don't override with empty values
+                                users_by_id[uid][key] = val
+                    else:
+                        # New user from S3 (not in legacy)
+                        users.append(s3_user)
+                        seen_ids.add(uid)
+                        users_by_id[uid] = s3_user
                 except Exception as e:
                     print(f"   ⚠️ Error leyendo {filename}: {e}")
-
-    # 2. Legacy: config/users.json (para usuarios que no vienen de la landing)
-    users_file = os.path.join("config", "users.json")
-    if os.path.exists(users_file):
-        try:
-            with open(users_file, "r", encoding="utf-8") as f:
-                legacy_users = json.load(f)
-            for user in legacy_users:
-                if user.get("id") and user["id"] not in seen_ids:
-                    users.append(user)
-                    seen_ids.add(user["id"])
-        except Exception as e:
-            print(f"   ⚠️ Error leyendo users.json: {e}")
 
     return users
 
