@@ -52,6 +52,9 @@ def fetch_cuadernorojo(email: str, password: str,
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
                 "--disable-gpu",
+                "--disable-dev-shm-usage",
+                "--disable-setuid-sandbox",
+                "--window-size=1280,800",
             ],
         )
         context = browser.new_context(
@@ -59,38 +62,64 @@ def fetch_cuadernorojo(email: str, password: str,
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
+                "Chrome/126.0.0.0 Safari/537.36"
             ),
+            locale="es-CL",
+            timezone_id="America/Santiago",
         )
+        # Anti-detection: override navigator.webdriver
+        context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         page = context.new_page()
 
         # --- LOGIN ---
+        print("   🔐 Cuaderno Rojo: conectando...")
         try:
-            page.goto(LOGIN_URL, wait_until="networkidle", timeout=60000)
+            page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=45000)
+            # Esperar a que cargue el body (Cloudflare puede agregar delay)
+            page.wait_for_selector("body", timeout=15000)
+            time.sleep(3)
         except Exception:
-            # Retry con timeout más largo si Cloudflare demora
+            # Retry
+            print("   ⏳ Retry...")
             time.sleep(10)
             try:
-                page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
+                page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=45000)
+                time.sleep(5)
             except Exception as e2:
                 print(f"   ❌ Cuaderno Rojo timeout en login: {e2}")
                 browser.close()
                 return result
-        time.sleep(5)
 
+        # Esperar Cloudflare challenge si aparece
         body = page.inner_text("body")
-        if "Verificación" in body or "challenge" in body.lower():
-            print("   ⏳ Esperando Cloudflare challenge...")
-            time.sleep(15)
+        attempts = 0
+        while ("Verificación" in body or "challenge" in body.lower() or "Just a moment" in body) and attempts < 4:
+            print(f"   ⏳ Cloudflare challenge... intento {attempts+1}")
+            time.sleep(10)
+            body = page.inner_text("body")
+            attempts += 1
 
-        try:
-            page.fill('#user_email', email)
-            page.fill('#user_password', password)
-            page.click('button[type="submit"]')
-        except Exception as e:
-            print(f"   ❌ Error llenando formulario: {e}")
-            browser.close()
-            return result
+        if "sign_in" not in page.url and "login" not in page.url.lower():
+            # Puede que ya esté logueado o redirigió
+            if "releases" in page.url or "dashboard" in page.url:
+                result["login_ok"] = True
+            else:
+                # Navegar al login manualmente
+                try:
+                    page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=30000)
+                    time.sleep(3)
+                except Exception:
+                    pass
+
+        if not result["login_ok"]:
+            try:
+                page.fill('#user_email', email)
+                page.fill('#user_password', password)
+                page.click('button[type="submit"]')
+            except Exception as e:
+                print(f"   ❌ Error llenando formulario: {e}")
+                browser.close()
+                return result
 
         try:
             page.wait_for_url("**/releases/**", timeout=15000)

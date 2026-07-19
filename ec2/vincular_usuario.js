@@ -375,10 +375,27 @@ async function createMonitorGroup(sock) {
         const sentMsg = await sock.sendMessage(groupId, { text: welcomeMsg });
         console.log(`[${userId}] Mensaje de bienvenida enviado al grupo`);
 
-        // Pinear el mensaje
+        // Pinear el mensaje de bienvenida
         try {
-            await sock.chatModify({ pin: true }, groupId, [sentMsg.key]);
-            console.log(`[${userId}] Mensaje pineado`);
+            // Método 1: chatModify (versiones antiguas de Baileys)
+            try {
+                await sock.chatModify({ pin: true }, groupId, [sentMsg.key]);
+                console.log(`[${userId}] Mensaje pineado (chatModify)`);
+            } catch (e1) {
+                // Método 2: sendMessage con pin (versiones nuevas)
+                try {
+                    await sock.sendMessage(groupId, { pin: { type: 1, key: sentMsg.key } });
+                    console.log(`[${userId}] Mensaje pineado (sendMessage pin)`);
+                } catch (e2) {
+                    // Método 3: pinMessage directo
+                    try {
+                        await sock.pinMessage(groupId, sentMsg.key, 604800); // 7 días
+                        console.log(`[${userId}] Mensaje pineado (pinMessage)`);
+                    } catch (e3) {
+                        console.log(`[${userId}] No se pudo pinear (3 métodos fallaron): ${e1.message}`);
+                    }
+                }
+            }
         } catch (e) {
             console.log(`[${userId}] No se pudo pinear: ${e.message}`);
         }
