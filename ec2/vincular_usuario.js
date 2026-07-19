@@ -31,7 +31,14 @@ if (!userId) {
 const method = process.argv[3] || 'qr'; // 'qr' o 'code'
 const phone = process.argv[4] || '';
 
-const authFolder = path.join(BASE_DIR, 'baileys_auth', userId);
+// Leer auth_folder desde config del usuario (si existe)
+const USERS_FILE = path.join(BASE_DIR, 'config', 'users.json');
+let userCfg = {};
+try {
+    const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8'));
+    userCfg = users.find(u => u.id === userId) || {};
+} catch {}
+const authFolder = path.join(BASE_DIR, userCfg?.whatsapp?.auth_folder || `baileys_auth/${userId}`);
 const qrFile = path.join('/tmp', `qr_${userId}.png`);
 
 console.log(`[${userId}] Iniciando vinculación WhatsApp...`);

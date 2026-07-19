@@ -99,6 +99,7 @@ def main():
                 try:
                     for idx in range(5):  # Max 5 hijos
                         try:
+                            sn.select_alumno(idx)
                             asist = sn._get("asistencia/index", {"alumno": idx})
                             if not asist or asist.get("error"):
                                 break
@@ -127,6 +128,7 @@ def main():
                             if idx == 0 and len(link_alumnos) > 1:
                                 # Obtener los demás hijos
                                 for idx2 in range(1, len(link_alumnos)):
+                                    sn.select_alumno(idx2)
                                     asist2 = sn._get("asistencia/index", {"alumno": idx2})
                                     if asist2 and not asist2.get("error"):
                                         nc2 = asist2.get("nombreyCurso", "").split(" - ")[0].strip()
