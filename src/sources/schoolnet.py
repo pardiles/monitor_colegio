@@ -71,14 +71,24 @@ class SchoolNetClient:
 
     def select_alumno(self, idx: int):
         """Cambiar el alumno activo modificando la cookie sn3data."""
-        sn3data = self.session.cookies.get("sn3data", "")
+        import re
+        # Buscar la cookie sn3data (puede haber duplicadas por dominio)
+        sn3data = None
+        for cookie in self.session.cookies:
+            if cookie.name == "sn3data":
+                sn3data = cookie.value
+                break
         if not sn3data:
             return
         # Reemplazar alum=X con el nuevo índice
-        import re
         new_val = re.sub(r'alum=\d+', f'alum={idx}', sn3data)
         if new_val == sn3data and 'alum=' not in sn3data:
             new_val = f"alum={idx}&{sn3data}"
+        # Actualizar la cookie (borrar todas las sn3data y poner la nueva)
+        self.session.cookies.set("sn3data", None)
+        for cookie in list(self.session.cookies):
+            if cookie.name == "sn3data":
+                self.session.cookies.clear(cookie.domain, cookie.path, cookie.name)
         self.session.cookies.set("sn3data", new_val, domain="schoolnet.colegium.com")
 
     def _get(self, endpoint: str, params: Dict = None) -> Any:

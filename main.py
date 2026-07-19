@@ -645,6 +645,17 @@ def ingest_for_user(user_cfg: dict) -> dict:
             {"hijo": h["nombre"], "profesora_jefe": h.get("profesora_jefe", ""), "curso": h.get("curso", "")}
             for h in user_cfg.get("hijos", [])
         ]
+        # Agregar emails de profesores desde datos de SchoolNet (asistencia)
+        for key in data:
+            if key.startswith("asistencia_"):
+                asist_data = data[key]
+                if isinstance(asist_data, dict):
+                    hijo_name = key.replace("asistencia_", "")
+                    mail_prof = asist_data.get("mailProfJefe", [""])[0] if isinstance(asist_data.get("mailProfJefe"), list) else asist_data.get("mailProfJefe", "")
+                    if mail_prof:
+                        for p in bot_context["profesores"]:
+                            if p["hijo"].lower() == hijo_name:
+                                p["email"] = mail_prof
         # Colegio info
         colegio = user_cfg.get("colegio", {})
         if colegio:
