@@ -24,13 +24,14 @@
       "nombre": "Colegio del Sagrado Corazón Apoquindo",
       "calendario_url": "https://colegiodelsagradocorazon.cl/evaluation/calendar.json",
       "scinfo_url": "https://colegiodelsagradocorazon.cl/scinfos",
+      "casino_url": "https://colegiodelsagradocorazon.cl/casino",
       "schoolnet_user": "avalenzuela143",
       "schoolnet_pass": "2776523xX#"
     },
     "gmail": {
       "credentials_file": "config/credentials_pablo.json",
       "token_file": "config/tokens/pablo_token.json",
-      "school_domains": ["colegiodelsagradocorazon.cl", "colegium.com"]
+      "school_domains": ["colegiodelsagradocorazon.cl", "colegium.com", "colegiumalert.com"]
     },
     "whatsapp": {
       "phone": "56968983699",
@@ -166,7 +167,7 @@
     "gmail": {
       "credentials_file": "config/credentials_kevin.json",
       "token_file": "config/tokens/kevin_token.json",
-      "school_domains": ["colegiodelsagradocorazon.cl", "colegium.com"]
+      "school_domains": ["colegiodelsagradocorazon.cl", "colegium.com", "colegiumalert.com"]
     },
     "whatsapp": {
       "phone": "56992352602",

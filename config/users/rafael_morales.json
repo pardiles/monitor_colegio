@@ -1,0 +1,38 @@
+{
+  "id": "rafael_morales",
+  "nombre": "Rafael Morales",
+  "email": "moralesg.rafa@gmail.com",
+  "hijos": [],
+  "colegio": {
+    "nombre": "Saint George's College",
+    "web_url": "https://saintgeorge.cl/",
+    "calendario_url": "https://saintgeorge.cl/familia/calendario/",
+    "talleres_url": "https://saintgeorge.cl/familia/programacion-talleres-cocurriculares-2-semestre/",
+    "casino_url": "https://saintgeorge.cl/familia/casino/",
+    "scinfo_url": null,
+    "schoolnet_user": "153642524",
+    "schoolnet_pass": "Holarafa.12"
+  },
+  "gmail": {
+    "accounts": [
+      {
+        "email": "moralesg.rafa@gmail.com",
+        "token_file": "config/tokens/rafael_token.json",
+        "school_domains": ["saintgeorge.cl", "colegiumalert.com"],
+        "hijo": "todos"
+      }
+    ],
+    "credentials_file": "config/credentials_rafael.json"
+  },
+  "whatsapp": {
+    "phone": "",
+    "auth_folder": "baileys_auth/rafael_morales",
+    "grupos_lectura": {},
+    "grupo_envio": null,
+    "grupo_monitor": null,
+    "destinatarios_monitor": []
+  },
+  "regimen": null,
+  "extraprogramaticas": [],
+  "pagos": null
+}

@@ -1,0 +1,33 @@
+{
+  "id": "daniel_fouilloux",
+  "nombre": "Daniel Fouilloux",
+  "hijos": [],
+  "colegio": {
+    "nombre": "Colegio Alemán de Santiago (Deutsche Schule)",
+    "web_url": "https://dsstgo.cl/",
+    "noticias_url": "https://dsstgo.cl/noticias/",
+    "extraprogramaticas_url": "https://dsstgo.cl/extracurriculares/",
+    "calendario_url": null,
+    "casino_url": null,
+    "scinfo_url": null,
+    "schoolnet_user": "",
+    "schoolnet_pass": ""
+  },
+  "gmail": {
+    "credentials_file": "",
+    "token_file": "",
+    "school_domains": ["dsstgo.cl", "colegiumalert.com"]
+  },
+  "whatsapp": {
+    "phone": "",
+    "auth_folder": "baileys_auth/daniel_fouilloux",
+    "grupos_lectura": {},
+    "grupo_envio": null,
+    "grupo_monitor": null,
+    "destinatarios_monitor": []
+  },
+  "regimen": null,
+  "extraprogramaticas": [],
+  "pagos": null,
+  "notas": "Extracurriculares en PDF. Noticias en web. Plataforma académica por determinar (puede ser SchoolNet u otra)."
+}

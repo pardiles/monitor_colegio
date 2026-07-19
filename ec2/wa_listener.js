@@ -94,11 +94,23 @@ async function botRespond(sock, groupId, question, userCfg) {
     // Cargar contexto enriquecido (generado por el scraping diario)
     const botContext = loadJSON(path.join(DATA_DIR, `bot_context_${userCfg.id}.json`), {});
     
-    // Formatear compañeros como texto legible
+    // Formatear compañeros como texto legible (con teléfono, dirección, apoderados)
     let companerosTxt = '';
     if (botContext.companeros) {
         for (const [hijo, lista] of Object.entries(botContext.companeros)) {
-            companerosTxt += `\nCompañeros de ${hijo}: ${lista.map(c => c.nombre).join(', ')}`;
+            const nombres = lista.map(c => c.nombre).join(', ');
+            companerosTxt += `\nCompañeros de ${hijo}: ${nombres}`;
+            // Detalle de cada compañero (teléfono, dirección, apoderados)
+            const detalles = lista.filter(c => c.telefono || c.direccion || c.padre || c.madre).map(c => {
+                let det = c.nombre;
+                if (c.telefono) det += ` | Tel: ${c.telefono}`;
+                if (c.direccion) det += ` | Dir: ${c.direccion}`;
+                if (c.padre) det += ` | Papá: ${c.padre}`;
+                if (c.madre) det += ` | Mamá: ${c.madre}`;
+                if (c.cumple) det += ` | Cumple: ${c.cumple}`;
+                return det;
+            }).join('\n  ');
+            if (detalles) companerosTxt += `\nDetalle compañeros ${hijo}:\n  ${detalles}`;
         }
     }
 
@@ -111,11 +123,27 @@ async function botRespond(sock, groupId, question, userCfg) {
                 const notas = asigs.filter(a => a.promedio).map(a => `${a.asignatura}: ${a.promedio}`).join(', ');
                 calificacionesTxt += `\nAsignaturas de ${hijo}: ${nombres}`;
                 if (notas) {
-                    calificacionesTxt += `\nNotas de ${hijo}: ${notas}`;
-                } else {
-                    calificacionesTxt += `\nNotas de ${hijo}: Las notas del 2° semestre aún no están cargadas en SchoolNet. Las del 1° semestre se actualizarán próximamente.`;
+                    calificacionesTxt += `\nNotas 1er semestre ${hijo}: ${notas}`;
                 }
             }
+        }
+    }
+    // 2do semestre
+    if (botContext.calificaciones_sem2) {
+        for (const [hijo, asigs] of Object.entries(botContext.calificaciones_sem2)) {
+            if (Array.isArray(asigs) && asigs.length > 0) {
+                const notas = asigs.filter(a => a.promedio).map(a => `${a.asignatura}: ${a.promedio}`).join(', ');
+                if (notas) {
+                    calificacionesTxt += `\nNotas 2do semestre ${hijo}: ${notas}`;
+                } else {
+                    calificacionesTxt += `\nNotas 2do semestre ${hijo}: Aún no están cargadas en SchoolNet.`;
+                }
+            }
+        }
+    } else if (botContext.calificaciones) {
+        // Si no hay sem2, indicar que no están disponibles
+        for (const hijo of Object.keys(botContext.calificaciones)) {
+            calificacionesTxt += `\nNotas 2do semestre ${hijo}: Aún no están cargadas en SchoolNet.`;
         }
     }
 
@@ -190,6 +218,32 @@ async function botRespond(sock, groupId, question, userCfg) {
         scinfoTxt = `\nSC Info (${botContext.scinfo.fecha}): ${botContext.scinfo.contenido.substring(0, 500)}`;
     }
 
+    // Pagos realizados (historial)
+    let pagosTxt = '';
+    if (botContext.pagos) {
+        const pagos = botContext.pagos;
+        if (pagos.fechas && Array.isArray(pagos.fechas)) {
+            pagosTxt = '\nPagos realizados (historial):';
+            for (let i = 0; i < pagos.fechas.length && i < 10; i++) {
+                const saldo = pagos.saldos?.[i] || '0';
+                const estado = saldo === '0' ? '✅ Pagado' : `⚠️ Saldo: $${saldo}`;
+                pagosTxt += `\n  ${pagos.fechas[i]} | $${pagos.montos?.[i] || '?'} | ${pagos.formas?.[i] || ''} | ${estado}`;
+            }
+        } else if (typeof pagos === 'object') {
+            pagosTxt += `\nPagos: ${JSON.stringify(pagos).substring(0, 500)}`;
+        }
+    }
+
+    // Avisos de cobranza (vencimientos futuros)
+    let cobranzaTxt = '';
+    if (botContext.avisos_cobranza && Array.isArray(botContext.avisos_cobranza)) {
+        cobranzaTxt = '\nAvisos de cobranza (próximos vencimientos):';
+        for (const av of botContext.avisos_cobranza) {
+            const pendiente = av.monto_a_pagar && av.monto_a_pagar !== '0' ? `⚠️ Pendiente: $${av.monto_a_pagar}` : '✅ Pagado';
+            cobranzaTxt += `\n  Vence: ${av.vencimiento || ''} | Neto: $${av.monto_neto || ''} | ${pendiente}`;
+        }
+    }
+
     const profesoresTxt = (botContext.profesores || []).map(p => `${p.hijo} (${p.curso}) - Prof jefe: ${p.profesora_jefe}${p.email ? ' - ' + p.email : ''}`).join('\n');
 
     // Formatear horarios como texto legible
@@ -226,10 +280,14 @@ ${profesoresTxt}
 ${calificacionesTxt}
 ${asistenciaTxt}
 ${conductaTxt}
-${companerosTxt.substring(0, 1500)}
+${companerosTxt.substring(0, 2000)}
 ${waRecienteTxt}
 ${emailsTxt}
 ${scinfoTxt}
+${pagosTxt}
+${cobranzaTxt}
+
+Menú casino hoy: ${botContext.casino_hoy || botContext.casino_menu || 'No disponible'}
 
 Fecha de hoy: ${today}`;
 
@@ -299,7 +357,12 @@ async function startSession(userCfg) {
     }
 
     const { state, saveCreds } = await useMultiFileAuthState(authFolder);
-    const sock = makeWASocket({ auth: state, printQRInTerminal: false });
+    const sock = makeWASocket({ 
+        auth: state, 
+        printQRInTerminal: false,
+        syncFullHistory: false,
+        markOnlineOnConnect: false,
+    });
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('messages.upsert', (m) => {
@@ -410,6 +473,7 @@ async function startSession(userCfg) {
         if (connection === 'open') {
             console.log(`[${userId}] WhatsApp ONLINE (${waCfg.phone})`);
             sock._isOnline = true;
+            sock._retryCount = 0; // Reset retry count on successful connection
             // Guardar lista de grupos localmente para list_groups.js
             (async () => {
                 try {
@@ -432,13 +496,14 @@ async function startSession(userCfg) {
                 console.log(`[${userId}] LOGGED OUT - necesita re-vincular QR`);
                 return; // No reconectar si fue logout manual
             }
-            console.log(`[${userId}] Desconectado, reconectando en 5s...`);
-            setTimeout(async () => {
-                const newSock = await startSession(userCfg);
-                if (newSock && global._activeSessions) {
-                    global._activeSessions[userId] = newSock;
-                }
-            }, 5000);
+            // Conflict (replaced) — esperar con backoff exponencial y NO crear nuevo socket
+            const retryCount = (sock._retryCount || 0) + 1;
+            sock._retryCount = retryCount;
+            const baseDelay = Math.min(30000, 5000 * Math.pow(2, retryCount - 1)); // 5s, 10s, 20s, 30s max
+            const jitter = Math.floor(Math.random() * 5000);
+            const delay = baseDelay + jitter;
+            console.log(`[${userId}] Desconectado (code=${code}), retry #${retryCount} en ${Math.round(delay/1000)}s...`);
+            // No process.exit — simplemente esperar y Baileys reconecta internamente
         }
     });
 

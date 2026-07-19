@@ -2,6 +2,20 @@
 Fuente: SchoolNet (Colegium).
 Login con Playwright → cookie sn3app → requests HTTP.
 Secciones: comunicaciones, calificaciones, asistencia, conducta, pagos, compañeros.
+
+Busca los 12 tópicos fundamentales:
+1. calificaciones ✅ (por semestre, con promedios)
+2. companeros ✅ (nombre, teléfono, dirección, padres, emails)
+3. asistencia ✅ (inasistencias + atrasos con fechas)
+4. conducta ✅ (anotaciones)
+5. extraprogramaticas ✅ (via SSO, requiere Playwright por Cloudflare)
+6. actividades → via calendario del colegio (externo)
+7. pagos ✅ (historial + avisos de cobranza)
+8. casino → via web del colegio (externo, PDF)
+9. calendario → via API JSON del colegio (externo)
+10. noticias → via web del colegio (externo)
+11. comunicaciones ✅ (circulares internas)
+12. horarios → config local (JSON)
 """
 
 import requests
@@ -111,6 +125,33 @@ class SchoolNetClient:
         self.select_alumno(alumno)
         return self._get("calificaciones/index", {"tipocalificacion": "nota", "alumno": alumno, "periodo": periodo})
 
+    def get_calificaciones_ambos_semestres(self, alumno: int = 0) -> Dict:
+        """Obtener calificaciones de ambos semestres. Si periodo=2 devuelve vacío, intenta con periodo=0 (anual)."""
+        self.select_alumno(alumno)
+        # Intentar 1er semestre
+        sem1 = self._get("calificaciones/index", {"tipocalificacion": "nota", "alumno": alumno, "periodo": 1})
+        # Intentar 2do semestre
+        sem2 = self._get("calificaciones/index", {"tipocalificacion": "nota", "alumno": alumno, "periodo": 2})
+        # Intentar periodo 0 (anual/general)
+        anual = self._get("calificaciones/index", {"tipocalificacion": "nota", "alumno": alumno, "periodo": 0})
+
+        result = {"semestre_1": sem1, "semestre_2": sem2, "anual": anual}
+        # Usar el que tenga datos
+        nombres_s1 = sem1.get("nombre", []) if isinstance(sem1, dict) else []
+        nombres_s2 = sem2.get("nombre", []) if isinstance(sem2, dict) else []
+        nombres_anual = anual.get("nombre", []) if isinstance(anual, dict) else []
+
+        if nombres_s2:
+            result["activo"] = sem2
+        elif nombres_anual:
+            result["activo"] = anual
+        elif nombres_s1:
+            result["activo"] = sem1
+        else:
+            result["activo"] = sem1
+
+        return result
+
     def get_asistencia(self, alumno: int = 0) -> Dict:
         """Obtener asistencia y conducta por alumno."""
         self.select_alumno(alumno)
@@ -128,6 +169,70 @@ class SchoolNetClient:
     def get_cobranza(self) -> Dict:
         """Obtener info de cobranza (devuelve URL con JWT)."""
         return self._get("cobranza/index")
+
+    def get_avisos_cobranza(self) -> list:
+        """Obtener avisos de cobranza (vencimientos futuros con montos pendientes).
+        Llama al endpoint cobranza que devuelve un JWT, luego usa Playwright
+        para acceder a sn4.colegium.com (protegido por Cloudflare)."""
+        data = self.get_cobranza()
+        url = data.get("url", "")
+        if not url:
+            return []
+        try:
+            from playwright.sync_api import sync_playwright
+            import time
+
+            avisos = []
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                context = browser.new_context(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                )
+                page = context.new_page()
+                page.goto(url, wait_until="networkidle", timeout=30000)
+                time.sleep(3)
+
+                # Buscar tab "Avisos de cobranza" y clickear
+                try:
+                    tab = page.locator("text=Avisos de Cobranza").first
+                    if tab.is_visible():
+                        tab.click()
+                        time.sleep(2)
+                except Exception:
+                    pass
+
+                # Extraer tabla de avisos
+                html = page.content()
+                browser.close()
+
+            # Parsear tabla HTML
+            import re
+            rows = re.findall(r'<tr[^>]*>(.*?)</tr>', html, re.DOTALL)
+            for row in rows:
+                cells = re.findall(r'<td[^>]*>(.*?)</td>', row, re.DOTALL)
+                if len(cells) >= 5:
+                    # Limpiar celdas
+                    clean_cells = [re.sub(r'<[^>]+>', '', c).strip().replace('\n', '').replace('  ', ' ') for c in cells]
+                    # Formato típico: N° aviso, Emisión, Vencimiento, Monto Neto, Monto a Pagar
+                    try:
+                        aviso = {
+                            "numero": clean_cells[0],
+                            "emision": clean_cells[1],
+                            "vencimiento": clean_cells[2],
+                            "monto_neto": clean_cells[3].replace('.', '').replace('$', '').strip(),
+                            "monto_a_pagar": clean_cells[4].replace('.', '').replace('$', '').strip() if len(clean_cells) > 4 else "0",
+                        }
+                        # Solo incluir si tiene vencimiento válido
+                        if aviso["vencimiento"] and '/' in aviso["vencimiento"]:
+                            avisos.append(aviso)
+                    except (IndexError, ValueError):
+                        pass
+
+            return avisos
+
+        except Exception as e:
+            print(f"   ⚠️ Error avisos cobranza: {e}")
+            return []
 
     def get_companeros(self, alumno: int = 0) -> Dict:
         """Obtener lista de compañeros (incluye cumpleaños)."""

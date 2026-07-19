@@ -501,12 +501,23 @@ def ingest_for_user(user_cfg: dict) -> dict:
                     data["pagos"] = sn.get_pagos()
                     print("   ✅ Pagos")
 
+                    # Avisos de cobranza (vencimientos futuros)
+                    try:
+                        data["avisos_cobranza"] = sn.get_avisos_cobranza()
+                        print(f"   ✅ Avisos cobranza: {len(data['avisos_cobranza'])}")
+                    except Exception as e:
+                        print(f"   ⚠️ Avisos cobranza: {e}")
+
                     # Por cada hijo: calificaciones, asistencia, conducta, salud, compañeros
                     hijos = user_cfg.get("hijos", [])
                     for i, hijo in enumerate(hijos):
                         nombre = hijo["nombre"].lower()
                         try:
-                            data[f"calificaciones_{nombre}"] = sn.get_calificaciones(i)
+                            data[f"calificaciones_{nombre}"] = sn.get_calificaciones(i, periodo=1)
+                            # Intentar 2do semestre también
+                            sem2 = sn.get_calificaciones(i, periodo=2)
+                            if isinstance(sem2, dict) and sem2.get("nombre"):
+                                data[f"calificaciones_{nombre}_sem2"] = sem2
                         except Exception:
                             pass
                         try:
@@ -550,6 +561,43 @@ def ingest_for_user(user_cfg: dict) -> dict:
                 data["scinfo"] = fetch_scinfo_latest()
             except Exception as e:
                 print(f"   ⚠️ SC Info: {e}")
+
+        # Casino/Menú del día (PDF mensual)
+        if colegio.get("casino_url"):
+            try:
+                from src.sources.casino import fetch_casino_menu, fetch_casino_menu_today
+                data["casino"] = fetch_casino_menu(colegio["casino_url"])
+                menu_hoy = fetch_casino_menu_today(colegio["casino_url"])
+                if menu_hoy:
+                    data["casino_hoy"] = menu_hoy
+                print(f"   ✅ Casino: {len(data['casino'].get('contenido', ''))} chars")
+            except Exception as e:
+                print(f"   ⚠️ Casino: {e}")
+
+        # Web del colegio: noticias, calendario, talleres (complementa SchoolNet)
+        web_urls = {}
+        if colegio.get("calendario_url") and "calendar.json" not in colegio.get("calendario_url", ""):
+            web_urls["calendario"] = colegio["calendario_url"]
+        if colegio.get("noticias_url"):
+            web_urls["noticias"] = colegio["noticias_url"]
+        if colegio.get("talleres_url"):
+            web_urls["talleres"] = colegio["talleres_url"]
+        if colegio.get("extraprogramaticas_url"):
+            web_urls["talleres"] = colegio["extraprogramaticas_url"]
+        if colegio.get("deportiva_url"):
+            web_urls["deportiva"] = colegio["deportiva_url"]
+
+        if web_urls or colegio.get("web_url"):
+            try:
+                from src.sources.web_colegio import WebColegioScraper
+                scraper = WebColegioScraper(colegio.get("web_url", ""), web_urls)
+                web_data = scraper.scrape_all()
+                if web_data:
+                    data["web_colegio"] = web_data
+                    topicos_encontrados = [k for k in web_data if not k.startswith("_")]
+                    print(f"   ✅ Web colegio: {', '.join(topicos_encontrados)}")
+            except Exception as e:
+                print(f"   ⚠️ Web colegio: {e}")
 
     # Gmail
     gmail_cfg = user_cfg.get("gmail", {})
@@ -627,12 +675,24 @@ def ingest_for_user(user_cfg: dict) -> dict:
                 companeros_data = data[key]
                 if isinstance(companeros_data, dict) and companeros_data.get("companeros"):
                     bot_context.setdefault("companeros", {})[key.replace("companeros_", "")] = [
-                        {"nombre": c.get("nombre", ""), "cumple": c.get("cumpleanos", "")}
+                        {
+                            "nombre": c.get("nombre", ""),
+                            "cumple": c.get("fnacimiento", c.get("cumpleanos", c.get("cumple", ""))),
+                            "telefono": c.get("telefono", c.get("celular", "")),
+                            "direccion": c.get("direccioncompleta", c.get("direccion", "")),
+                            "padre": c.get("nombrepadre", c.get("padre", "")),
+                            "madre": c.get("nombremadre", c.get("madre", "")),
+                            "celular_padre": c.get("celularpadre", ""),
+                            "celular_madre": c.get("celularmadre", ""),
+                            "email_padre": c.get("emailpadre", ""),
+                            "email_madre": c.get("emailmadre", ""),
+                            "curso": c.get("curso", ""),
+                        }
                         for c in companeros_data["companeros"][:40]
                     ]
         # Calificaciones (por hijo)
         for key in data:
-            if key.startswith("calificaciones_"):
+            if key.startswith("calificaciones_") and not key.endswith("_sem2"):
                 cal_data = data[key]
                 if isinstance(cal_data, dict):
                     hijo_name = key.replace("calificaciones_", "")
@@ -656,6 +716,19 @@ def ingest_for_user(user_cfg: dict) -> dict:
                                 {"asignatura": a.get("nombre", a.get("asignatura", "")), "promedio": a.get("promedio", "")}
                                 for a in asigs[:20] if isinstance(a, dict)
                             ]
+            # 2do semestre
+            elif key.endswith("_sem2"):
+                cal_data = data[key]
+                if isinstance(cal_data, dict):
+                    hijo_name = key.replace("calificaciones_", "").replace("_sem2", "")
+                    nombres_asigs = cal_data.get("nombre", [])
+                    pf = cal_data.get("pf", [])
+                    if isinstance(nombres_asigs, list) and nombres_asigs:
+                        notas = []
+                        for i, asig in enumerate(nombres_asigs):
+                            nota = pf[i] if i < len(pf) and pf[i] else ""
+                            notas.append({"asignatura": asig, "promedio": nota})
+                        bot_context.setdefault("calificaciones_sem2", {})[hijo_name] = notas
         # Conducta/anotaciones (por hijo)
         for key in data:
             if key.startswith("conducta_"):
@@ -725,6 +798,34 @@ def ingest_for_user(user_cfg: dict) -> dict:
                 "fecha": scinfo.get("fecha", ""),
                 "contenido": scinfo.get("contenido", "")[:1000]
             }
+
+        # Pagos/Cobranza
+        if "pagos" in data and data["pagos"]:
+            bot_context["pagos"] = data["pagos"]
+
+        # Avisos de cobranza (vencimientos futuros con montos pendientes)
+        if "avisos_cobranza" in data and data["avisos_cobranza"]:
+            bot_context["avisos_cobranza"] = data["avisos_cobranza"]
+
+        # Casino/Menú del día
+        if "casino_hoy" in data and data["casino_hoy"]:
+            bot_context["casino_hoy"] = data["casino_hoy"]
+        elif "casino" in data and data["casino"].get("contenido"):
+            bot_context["casino_menu"] = data["casino"]["contenido"][:1000]
+
+        # Web del colegio (noticias, calendario, talleres)
+        if "web_colegio" in data and data["web_colegio"]:
+            web = data["web_colegio"]
+            if "noticias" in web and isinstance(web["noticias"], list):
+                bot_context["noticias_colegio"] = web["noticias"][:5]
+            if "calendario" in web and isinstance(web["calendario"], dict):
+                cal_content = web["calendario"].get("contenido_html", "")
+                pdfs_content = " ".join([p.get("contenido", "") for p in web["calendario"].get("pdfs", [])])
+                bot_context["calendario_web"] = (cal_content + " " + pdfs_content)[:2000]
+            if "talleres" in web and isinstance(web["talleres"], dict):
+                tal_content = web["talleres"].get("contenido_html", "")
+                pdfs_content = " ".join([p.get("contenido", "") for p in web["talleres"].get("pdfs", [])])
+                bot_context["talleres"] = (tal_content + " " + pdfs_content)[:1500]
 
         bot_context_file = os.path.join("data", f"bot_context_{user_id}.json")
         with open(bot_context_file, "w", encoding="utf-8") as f:

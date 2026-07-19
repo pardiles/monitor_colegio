@@ -70,7 +70,34 @@ Basado en $0.21 USD/usuario/mes (arquitectura escalable con Gemini Flash + proxy
 - Perfil: mensualidad >$300K/alumno, usan SchoolNet/Colegium, apoderados activos en WhatsApp
 - Caso de éxito: Colegio del Sagrado Corazón Apoquindo (piloto gratuito)
 
+### Testers activos / próximos
+
+| Nombre | Colegio | Plataforma probable | Estado |
+|---|---|---|---|
+| Pablo Ardiles | Sagrado Corazón Apoquindo | SchoolNet (Colegium) | ✅ Activo |
+| Oscar Ardiles | Oxford School / Acuarela Montessori | Oxford RSS + Cuaderno Rojo | ✅ Activo |
+| Kevin Moir | Sagrado Corazón Apoquindo | SchoolNet (Colegium) | ✅ Activo |
+| Ramón Lillo | Sagrado Corazón Apoquindo | SchoolNet (Colegium) | 🟡 Pendiente |
+| Jose Walker | Sagrado Corazón Apoquindo | SchoolNet (Colegium) | 🟡 Pendiente |
+| Rafael Morales | Saint George's College | SchoolNet (Colegium) | 🟡 Pendiente |
+| Jose Yutronic | Alianza Francesa | Pronote | 🟡 Pendiente |
+| Daniel Fouilloux | Colegio Alemán | SchoolNet (Colegium) | 🟡 Pendiente |
+| Javier Bosch | San Ignacio El Bosque | SchoolNet (Colegium) | 🟡 Pendiente |
+| Francisco Guzmán | Colegio Manquehue | SchoolNet (Colegium) | 🟡 Pendiente |
+
 ## Notas pendientes
+- **IMPORTANTE SchoolNet**: Las credenciales deben ser del apoderado titular/admin de la cuenta. El usuario secundario (ej: la mamá si el papá es titular) NO puede ver las cobranzas ni algunos datos. Siempre solicitar credenciales del titular.
+- **Almacenamiento incremental**: Revisar cómo se guarda la información para no duplicar datos entre ejecuciones. La ingesta debe ser incremental (solo agregar lo nuevo, no reescribir todo cada vez).
+- **Múltiples emails por usuario**: Un apoderado puede tener más de un email a monitorear (ej: Rafael Morales tiene 2). La config de Gmail debe soportar múltiples cuentas/direcciones por usuario, filtrando por dominios del colegio en cada una.
+- **Landing: pairing code desde celular**: El proceso de generar pairing code tarda ~30-50 segundos (Baileys conecta + genera código). La landing debe:
+  1. Mostrar spinner con "Generando código de vinculación, puede demorar hasta 30 segundos..."
+  2. Una vez mostrado el código, agregar un **timer visual countdown** (ej: "Tienes 45 segundos para ingresar este código") para que el usuario sepa que tiene que ser rápido
+  3. Aumentar el timeout del proceso
+  4. Actualmente se queda pegado en "Iniciando sesión" y no termina
+  5. Si expira, mostrar botón "Reintentar" en vez de quedarse pegado
+- **Automatizar alta de usuarios (Gmail/landing)**: Implementado flujo de lista autorizada en S3. El admin carga emails autorizados y la landing valida contra esa lista. Para escalar a colegios: el colegio entrega lista de emails → se carga masivamente.
+- **Google OAuth verification**: Mientras la app esté en "modo test", máximo 100 usuarios pueden vincular Gmail. Para escalar a un colegio completo (500+ familias) necesitamos pasar la **verificación de Google** (formulario + review, ~2-4 semanas). Iniciar este trámite ANTES de cerrar el primer colegio pagante. Requisitos: política de privacidad, dominio verificado, descripción del uso de datos.
+- **Espacio en disco EC2**: Revisar periódicamente el espacio en disco. Eliminar archivos temporales (/tmp/qr_*, /tmp/pairing.log, /tmp/vincular_*), logs antiguos (/var/log/wa_listener.log, /var/log/monitor-colegio.log), data de outbox procesada, PDFs de attachments viejos (>30 días), bot_context antiguos. Implementar cron de limpieza o script de mantenimiento semanal.
 - (por completar)
 
 ## Plan de contratación
@@ -155,6 +182,7 @@ Mismo producto, misma infra. Seguir la base de Colegium/Alexia en cada país.
 | Perú | 3.000+ | $400-800 | Colegium, Sieweb |
 | México | 15.000+ | $600-1.200 | Colegium, Educamos |
 | Argentina | 4.000+ | $300-600 | Colegium, Aulica |
+| Chile (liceos franceses) | 10+ | $500-1.000 | Pronote (Index Éducation) |
 
 **Requisitos para Latam:**
 - Adaptar scraping a plataformas locales (Phidias, Sieweb, etc.)
@@ -295,6 +323,7 @@ Servicio B2B para colegios particulares. Resúmenes diarios automáticos por Wha
 - Comunas: Las Condes, Vitacura, Lo Barnechea, La Dehesa, Providencia, Ñuñoa
 - Mensualidad alumno >$300K
 - Usan SchoolNet/Colegium u otra plataforma digital
+- **Plataformas soportadas/planificadas:** SchoolNet (Colegium), Lirmi, LaFase, Pronote, Cuaderno Rojo, Oxford School
 - 300-1500 alumnos
 
 ### Propuesta de valor por audiencia
@@ -375,6 +404,9 @@ Servicio B2B para colegios particulares. Resúmenes diarios automáticos por Wha
 | **Napsis/SND** | Gestión escolar (2000+ colegios en Chile). 200 funcionalidades. | Similar a Colegium | Misma limitación: pull, no push. Sin WhatsApp. |
 | **Alexia (Educaria)** | Plataforma escolar para subvencionados | $200-500K/mes | No tiene comunicación directa a apoderados por WA |
 | **Radar Escolar** (adquirido por Colegium 2022) | Sincronizaba datos entre plataformas | Integrado en Colegium | Ya no existe como producto independiente |
+| **Lirmi** | Plataforma escolar: notas, asistencia, comunicaciones | $300K-800K/mes | Pull (app propia). Sin WA, sin AI, sin resúmenes. |
+| **LaFase** | Gestión escolar chilena | Similar | Pull. Sin comunicación directa WA. |
+| **Pronote** (Index Éducation) | Plataforma de gestión escolar (liceos franceses) | Incluido en matrícula | Pull (webapp/app). Sin WA, sin AI. Usada en Alliance Française, Lycée Antoine de Saint-Exupéry, etc. |
 
 ### Competidores internacionales (comunicación escolar)
 
@@ -434,6 +466,14 @@ Servicio B2B para colegios particulares. Resúmenes diarios automáticos por Wha
 - Si se detectan 10+ mensajes negativos en 1 hora sobre un tema → alerta inmediata al director
 - Análisis de sentimiento en tiempo real con AI
 - **Valor para el colegio:** se entera antes de que llegue el reclamo formal
+
+### Análisis de preguntas frecuentes del bot conversacional
+- Guardar todas las preguntas que los apoderados hacen al bot (con categoría y frecuencia)
+- Reportar al colegio: "las 10 preguntas más comunes esta semana"
+- Detectar patrones: si muchos preguntan lo mismo → la comunicación del colegio fue insuficiente
+- Ejemplos: "¿a qué hora sale mañana?" (40%), "¿hay clases el viernes?" (25%), "¿cuándo es la reunión?" (15%)
+- **Valor para el colegio:** evidencia objetiva de qué info falta o no llega clara
+- **Implementación:** log de preguntas en `data/bot_questions_{user_id}.json` con timestamp, pregunta, categoría (horario/evaluación/evento/pago/compañero/otro), si el bot pudo responder o no
 
 ### Personalización de horarios/frecuencia por apoderado
 - Solo AM / Solo PM / Ambos

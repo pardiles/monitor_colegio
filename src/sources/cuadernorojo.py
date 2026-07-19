@@ -25,8 +25,15 @@ WEB_BASE = "https://www.cuadernorojo.com"
 def fetch_cuadernorojo(email: str, password: str,
                        max_comunicados: int = 10) -> Dict:
     """
-    Login + obtener comunicados recientes de Cuaderno Rojo.
+    Login + obtener comunicados y datos académicos de Cuaderno Rojo.
     Todo dentro de una sesión Playwright (Cloudflare bloquea requests).
+
+    Tópicos que busca:
+    - Comunicaciones/Circulares ✅
+    - Calificaciones (si la plataforma lo expone)
+    - Asistencia (si la plataforma lo expone)
+    - Calendario/Eventos
+    - Horarios
 
     Args:
         email: Email de login
@@ -34,9 +41,9 @@ def fetch_cuadernorojo(email: str, password: str,
         max_comunicados: Máximo de comunicados a leer en detalle
 
     Returns:
-        Dict con: login_ok, comunicados (lista con asunto, fecha, contenido)
+        Dict con: login_ok, comunicados, calificaciones, asistencia, calendario
     """
-    result = {"login_ok": False, "comunicados": []}
+    result = {"login_ok": False, "comunicados": [], "calificaciones": [], "asistencia": {}, "calendario": []}
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
@@ -58,8 +65,18 @@ def fetch_cuadernorojo(email: str, password: str,
         page = context.new_page()
 
         # --- LOGIN ---
-        page.goto(LOGIN_URL, wait_until="networkidle")
-        time.sleep(3)
+        try:
+            page.goto(LOGIN_URL, wait_until="networkidle", timeout=60000)
+        except Exception:
+            # Retry con timeout más largo si Cloudflare demora
+            time.sleep(10)
+            try:
+                page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
+            except Exception as e2:
+                print(f"   ❌ Cuaderno Rojo timeout en login: {e2}")
+                browser.close()
+                return result
+        time.sleep(5)
 
         body = page.inner_text("body")
         if "Verificación" in body or "challenge" in body.lower():

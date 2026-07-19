@@ -1,0 +1,34 @@
+{
+  "id": "francisco_guzman",
+  "nombre": "Francisco Guzmán",
+  "hijos": [],
+  "colegio": {
+    "nombre": "Colegio SSCC Manquehue",
+    "web_url": "https://ssccmanquehue.cl/inicio",
+    "calendario_url": "https://ssccmanquehue.cl/calendario-segundo-ciclo",
+    "calendario_tipo": "google_calendar_embed",
+    "calendario_nota": "Google Calendar embebido. Calendar ID probablemente en dominio colegiosscc.cl. Extraer con Playwright del iframe src al onboarding del usuario.",
+    "talleres_url": null,
+    "casino_url": null,
+    "scinfo_url": null,
+    "schoolnet_user": "",
+    "schoolnet_pass": ""
+  },
+  "gmail": {
+    "credentials_file": "",
+    "token_file": "",
+    "school_domains": ["ssccmanquehue.cl", "colegiumalert.com"]
+  },
+  "whatsapp": {
+    "phone": "",
+    "auth_folder": "baileys_auth/francisco_guzman",
+    "grupos_lectura": {},
+    "grupo_envio": null,
+    "grupo_monitor": null,
+    "destinatarios_monitor": []
+  },
+  "regimen": null,
+  "extraprogramaticas": [],
+  "pagos": null,
+  "notas": "Calendario por ciclo (primer ciclo, segundo ciclo, etc). Talleres cocurriculares en PDF semestral. Plataforma académica: SchoolNet (Colegium). Misma congregación que Sagrado Corazón Apoquindo (SSCC)."
+}

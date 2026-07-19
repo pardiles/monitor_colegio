@@ -2,10 +2,21 @@
 Fuente: Oxford School Villarrica (web pública).
 URL: https://www.oxfordschool.cl/
 
-Fuentes disponibles:
-- RSS Feed (noticias/blog): https://www.oxfordschool.cl/feed/
-- PDFs públicos (materiales, reglamentos)
-No requiere login.
+Busca los 12 tópicos fundamentales:
+1. calificaciones → NO disponible (no tiene plataforma académica web)
+2. companeros → NO disponible
+3. asistencia → NO disponible
+4. conducta → NO disponible
+5. extraprogramaticas → Busca en PDFs de materiales/reglamentos
+6. actividades → Noticias del RSS
+7. pagos → NO disponible
+8. casino → Busca link/PDF de casino en la web
+9. calendario → Busca link/PDF de calendario en la web
+10. noticias ✅ (RSS feed)
+11. comunicaciones → Busca en PDFs
+12. horarios → Busca en PDFs
+
+No requiere login. Fuentes: RSS feed + PDFs públicos + scraping de links.
 """
 
 import re
@@ -151,19 +162,69 @@ def _normalize_curso(curso: str) -> str:
 def fetch_oxford_all(curso: str = "", max_noticias: int = 5) -> Dict:
     """
     Obtener toda la info disponible de Oxford School.
+    Busca los 12 tópicos fundamentales en la web.
 
     Returns:
-        Dict con: noticias, pdfs
+        Dict con todos los tópicos encontrados
     """
-    print("   📰 RSS noticias...")
-    noticias = fetch_oxford_noticias(max_noticias=max_noticias)
-    print(f"   ✅ {len(noticias)} noticias")
-
-    print("   📄 PDFs...")
-    pdfs = fetch_oxford_pdfs(curso=curso)
-    print(f"   ✅ {len(pdfs)} PDFs leídos")
-
-    return {
-        "noticias": noticias,
-        "pdfs": pdfs,
+    result = {
+        "noticias": [],
+        "pdfs": [],
+        "calendario": [],
+        "casino": {},
+        "extraprogramaticas": [],
+        "comunicaciones": [],
+        "horarios": {},
+        "_errors": [],
     }
+
+    # 1. Noticias (RSS)
+    print("   📰 RSS noticias...")
+    try:
+        result["noticias"] = fetch_oxford_noticias(max_noticias=max_noticias)
+        print(f"   ✅ {len(result['noticias'])} noticias")
+    except Exception as e:
+        result["_errors"].append(f"noticias: {e}")
+
+    # 2. PDFs (materiales, reglamentos, posible calendario/horarios)
+    print("   📄 PDFs...")
+    try:
+        pdfs = fetch_oxford_pdfs(curso=curso)
+        result["pdfs"] = pdfs
+        print(f"   ✅ {len(pdfs)} PDFs leídos")
+
+        # Clasificar PDFs por tópico (buscar keywords en nombre/contenido)
+        for pdf in pdfs:
+            fname = pdf.get("filename", "").lower()
+            content = pdf.get("contenido", "").lower()
+            if any(k in fname for k in ["calendario", "calendar", "fecha"]):
+                result["calendario"].append(pdf)
+            elif any(k in fname for k in ["casino", "menu", "minuta", "almuerzo"]):
+                result["casino"] = {"contenido": pdf.get("contenido", ""), "url": pdf.get("url", "")}
+            elif any(k in fname for k in ["taller", "extracurricular", "extra", "deport"]):
+                result["extraprogramaticas"].append(pdf)
+            elif any(k in fname for k in ["horario", "schedule"]):
+                result["horarios"] = {"contenido": pdf.get("contenido", ""), "url": pdf.get("url", "")}
+            elif any(k in fname for k in ["circular", "comunicado", "aviso"]):
+                result["comunicaciones"].append(pdf)
+    except Exception as e:
+        result["_errors"].append(f"pdfs: {e}")
+
+    # 3. Buscar links adicionales en la home (auto-discovery)
+    print("   🔍 Auto-discovery web...")
+    try:
+        from src.sources.web_colegio import WebColegioScraper
+        scraper = WebColegioScraper(BASE_URL)
+        web_data = scraper._auto_discover()
+        discovered = web_data.get("_discovered_urls", {})
+        if discovered:
+            print(f"   ✅ Descubierto: {', '.join(discovered.keys())}")
+            # Merge discovered data
+            if "calendario" in web_data and not result["calendario"]:
+                result["calendario"] = web_data["calendario"] if isinstance(web_data["calendario"], list) else [web_data["calendario"]]
+            if "noticias" in web_data and not result["noticias"]:
+                result["noticias"] = web_data["noticias"]
+    except Exception as e:
+        result["_errors"].append(f"auto-discovery: {e}")
+
+    return result

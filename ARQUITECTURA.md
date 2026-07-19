@@ -87,6 +87,74 @@ Se ejecuta 2 veces al día para capturar info nueva.
 5. **WhatsApp grupos** (Baileys)
    - Mensajes nuevos de los 3 grupos (última semana)
 
+6. **Fuentes futuras (pendientes de implementar)**
+   - **Lirmi** (https://www.lirmi.cl/cl) — Plataforma escolar usada en varios colegios de Chile. Scraping con Playwright + requests.
+   - **LaFase** (https://lafase.cl/) — Plataforma de gestión escolar. PDFs públicos (calendario, extracurriculares, deportiva, casino).
+   - **Pronote** (https://4170004n.index-education.net/pronote/) — Plataforma francesa de gestión escolar usada en liceos franceses de Chile (Alliance Française, Lycée, etc.). Evaluar librería `pronotepy`.
+   - Cada nueva fuente debe extraer: calificaciones, compañeros, asistencia, conducta, extraprogramáticas, actividades, atrasos, pagos, **casino/menú del día**, **calendario** (evaluaciones, feriados, eventos, reuniones), **noticias** (web del colegio).
+
+   **REGLA FUNDAMENTAL DE SCRAPING:**
+   Todo webscrapper desarrollado para cualquier colegio/plataforma SIEMPRE debe buscar cómo extraer los tópicos fundamentales con el mayor detalle posible. La lista de tópicos obligatorios es:
+
+   | # | Tópico | Detalle mínimo esperado |
+   |---|---|---|
+   | 1 | Calificaciones | Por asignatura, por semestre, promedios parciales y finales |
+   | 2 | Compañeros | Nombre, teléfono, dirección, padre, madre, emails, cumpleaños |
+   | 3 | Asistencia | Inasistencias con fechas + atrasos con fechas |
+   | 4 | Conducta | Anotaciones con fecha, motivo, profesor |
+   | 5 | Extraprogramáticas | Nombre, día, horario, estado (pagada/inscrita), profesor |
+   | 6 | Actividades/Eventos | Fecha, hora, descripción, lugar, curso afectado |
+   | 7 | Pagos/Cobranza | Historial pagados + avisos pendientes con vencimiento y monto |
+   | 8 | Casino/Menú | Menú del día o semanal (generalmente PDF mensual) |
+   | 9 | Calendario | Evaluaciones, feriados, reuniones, salidas anticipadas — siempre con FECHA y HORA |
+   | 10 | Noticias | Últimas publicaciones de la web del colegio |
+   | 11 | Comunicaciones | Circulares, avisos oficiales del colegio |
+   | 12 | Horarios | Ramos por día + hora de salida por curso |
+
+   **REGLA: Todo dato que tenga fecha DEBE incluir la hora si está disponible.** Pruebas, entrevistas, reuniones, actividades, eventos — siempre día + hora. Si la hora no está explícita, indicar "hora no especificada".
+
+   Si un tópico no está disponible en la plataforma, documentar por qué y buscar fuente alternativa (web del colegio, PDF, email, etc.).
+
+   **ARQUITECTURA DE EJECUCIÓN DE SCRAPERS:**
+
+   Por usuario se ejecutan TODAS sus fuentes configuradas, y CADA fuente busca TODOS los tópicos:
+
+   ```
+   Usuario → [SchoolNet] → 12 tópicos
+           → [Web colegio] → 12 tópicos  
+           → [Gmail] → 12 tópicos (extraer info relevante de emails: cumpleaños, paseos, reuniones, pagos)
+           → [WhatsApp] → 12 tópicos (extraer de mensajes: cumpleaños, paseos, horarios, actividades)
+   ```
+
+   **Ejecución:**
+   - Primera vinculación: TODAS las fuentes se ejecutan en secuencial (real-time, ~2-5 min)
+   - Ejecución diaria (cron): secuencial por usuario, fuente por fuente
+   - Futuro (escalamiento): paralelizar fuentes por usuario con asyncio/threads
+
+   **Gmail y WhatsApp como fuentes de tópicos:**
+   No solo monitorear mensajes — también EXTRAER datos relevantes:
+   - Cumpleaños mencionados en grupos → calendario
+   - "Mañana no hay clases" → calendario
+   - "Paseo el viernes al parque" → actividades
+   - "Casino: menú de la semana" (adjunto PDF) → casino
+   - "Reunión de apoderados martes 15:00" → calendario
+   - Emails de cobranza → pagos
+   - Emails con horarios/calendario adjunto → horarios, calendario
+
+   **Además de los 12 tópicos, Gmail y WA deben extraer DATOS GENERALES relevantes:**
+   - Conflictos entre apoderados o con el colegio
+   - Juntas fuera del colegio (cumpleaños de compañeros, asados, salidas grupales)
+   - Partidos y eventos deportivos
+   - Cambios de horario mencionados informalmente
+   - Actividades sociales del curso (rifas, colectas, regalos profesores)
+   - Info de transporte (furgón, cambios de ruta)
+   - Cualquier dato que un apoderado consideraría útil saber
+
+   Todo esto se agrega al **calendario persistente** como eventos, permitiendo que el resumen diario y el bot tengan visibilidad completa de lo que pasa alrededor del colegio — no solo lo oficial.
+
+   **Merge de tópicos:**
+   Si 2 fuentes encuentran el mismo tópico (ej: calendario en SchoolNet Y en web del colegio), se fusionan sin duplicar. Prioridad: plataforma académica > web del colegio > Gmail > WhatsApp.
+
 ### Lambda 2: Resumen + Envío (7:00 AM y 20:00)
 1. Lee datos del día desde S3
 2. Arma contexto con info relevante (hoy + semana)

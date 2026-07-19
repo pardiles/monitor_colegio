@@ -28,7 +28,7 @@ if (!userId) {
     console.error('Uso: node vincular_usuario.js <user_id> [method] [phone]');
     process.exit(1);
 }
-const method = process.argv[3] || 'qr'; // 'qr' o 'code'
+const method = process.argv[3] || 'qr'; // 'qr', 'code', o 'create_group'
 const phone = process.argv[4] || '';
 
 // Leer auth_folder desde config del usuario (si existe)
@@ -40,6 +40,39 @@ try {
 } catch {}
 const authFolder = path.join(BASE_DIR, userCfg?.whatsapp?.auth_folder || `baileys_auth/${userId}`);
 const qrFile = path.join('/tmp', `qr_${userId}.png`);
+
+// Si modo es create_group, solo crear el grupo monitor y salir
+if (method === 'create_group') {
+    (async () => {
+        console.log(`[${userId}] Modo: crear grupo monitor...`);
+        if (!fs.existsSync(path.join(authFolder, 'creds.json'))) {
+            console.log(`[${userId}] ERROR: No hay sesión WA vinculada. Vincular primero.`);
+            process.exit(1);
+        }
+        const { state, saveCreds } = await useMultiFileAuthState(authFolder);
+        const sock = makeWASocket({ auth: state, printQRInTerminal: false, syncFullHistory: false });
+        sock.ev.on('creds.update', saveCreds);
+        sock.ev.on('connection.update', async (u) => {
+            if (u.connection === 'open') {
+                console.log(`[${userId}] Conectado, creando grupo...`);
+                await new Promise(r => setTimeout(r, 3000));
+                await createMonitorGroup(sock);
+                // Reiniciar wa_listener
+                try {
+                    const { execSync } = require('child_process');
+                    execSync('pkill -f "node.*wa_listener" 2>/dev/null; sleep 2; cd /opt/monitor-colegio && sudo -u ubuntu nohup node wa_listener.js >> /var/log/wa_listener.log 2>&1 &', { shell: '/bin/bash' });
+                    console.log(`[${userId}] wa_listener reiniciado`);
+                } catch (e) {}
+                setTimeout(() => process.exit(0), 3000);
+            }
+            if (u.connection === 'close') {
+                console.log(`[${userId}] Error de conexión al crear grupo`);
+                process.exit(1);
+            }
+        });
+        setTimeout(() => process.exit(1), 120000);
+    })();
+} else {
 
 console.log(`[${userId}] Iniciando vinculación WhatsApp...`);
 fs.mkdirSync(authFolder, { recursive: true });
@@ -146,16 +179,16 @@ async function start() {
             // Esperar un momento para que carguen los grupos
             setTimeout(async () => {
                 await listGroups(sock);
-                await createMonitorGroup(sock);
-                // Reiniciar wa_listener para que cargue el nuevo grupo_monitor
+                // NO crear grupo aquí — se crea en paso 9 (welcome) via create_monitor_group.js
+                // Reiniciar wa_listener para que cargue la nueva sesión
                 try {
                     const { execSync } = require('child_process');
-                    execSync('systemctl restart wa-listener');
+                    execSync('pkill -f "node.*wa_listener" 2>/dev/null; sleep 2; cd /opt/monitor-colegio && sudo -u ubuntu nohup node wa_listener.js >> /var/log/wa_listener.log 2>&1 &', { shell: '/bin/bash' });
                     console.log(`[${userId}] wa_listener reiniciado`);
                 } catch (e) {
                     console.log(`[${userId}] No se pudo reiniciar wa_listener: ${e.message}`);
                 }
-                console.log(`[${userId}] Vinculación completada. Saliendo.`);
+                console.log(`[${userId}] Vinculación completada (sin crear grupo). Saliendo.`);
                 process.exit(0);
             }, 5000);
         }
@@ -359,3 +392,4 @@ start().catch(e => {
     console.error(`[${userId}] Error fatal: ${e.message}`);
     process.exit(1);
 });
+} // end else (vinculación flow)

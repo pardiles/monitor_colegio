@@ -1,0 +1,30 @@
+{
+  "id": "javier_bosch",
+  "nombre": "Javier Bosch",
+  "hijos": [],
+  "colegio": {
+    "nombre": "Colegio San Ignacio El Bosque",
+    "web_url": "https://sanignacio.cl/",
+    "calendario_url": null,
+    "casino_url": null,
+    "scinfo_url": null,
+    "schoolnet_user": "",
+    "schoolnet_pass": ""
+  },
+  "gmail": {
+    "credentials_file": "",
+    "token_file": "",
+    "school_domains": ["sanignacio.cl", "colegiumalert.com"]
+  },
+  "whatsapp": {
+    "phone": "",
+    "auth_folder": "baileys_auth/javier_bosch",
+    "grupos_lectura": {},
+    "grupo_envio": null,
+    "grupo_monitor": null,
+    "destinatarios_monitor": []
+  },
+  "regimen": null,
+  "extraprogramaticas": [],
+  "pagos": null
+}
