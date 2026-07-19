@@ -361,3 +361,46 @@ Con fleet configurado con múltiples tipos (t3.medium + t3a.medium + t3.small) y
 - [ ] Agregar al systemd como servicio
 - [ ] User-data script para boot de nuevas instancias
 - [ ] Probar failover end-to-end
+
+
+## Bot conversacional: riesgo Meta y mitigación
+
+### ¿Meta detecta el bot conversacional?
+
+No agrega riesgo significativo. Desde la perspectiva de Meta:
+- Es un dispositivo vinculado que envía mensajes en un grupo (igual que WhatsApp Web)
+- Baja frecuencia (~5 respuestas/día por usuario)
+- El usuario vinculó voluntariamente
+- Meta no puede distinguir si quien escribe es humano o bot
+
+### Mitigaciones anti-detección para respuestas del bot
+
+| Mitigación | Implementación |
+|---|---|
+| Delay antes de responder | Random 3-8 segundos (simular que "lee y escribe") |
+| Typing indicator | Enviar "composing" antes de responder (Baileys lo soporta) |
+| Variar formato | No siempre la misma estructura de respuesta |
+| Horario silencioso | No responder entre 23:00-6:00 (ningún humano contesta a esa hora) |
+| No responder todo | Solo preguntas directas al bot (ej: si mencionan "bot" o hacen pregunta con "?") |
+
+### Código ejemplo (wa_listener.js)
+
+```javascript
+// Detectar pregunta en grupo Monitor
+if (isMonitor && body.includes('?')) {
+    // Delay humano (3-8 segundos)
+    const delay = 3000 + Math.random() * 5000;
+    
+    // Enviar "escribiendo..."
+    await sock.sendPresenceUpdate('composing', groupId);
+    
+    await new Promise(r => setTimeout(r, delay));
+    
+    // Generar respuesta con Gemini Flash
+    const answer = await generateBotResponse(body, userContext);
+    
+    if (answer) {
+        await sock.sendMessage(groupId, { text: answer });
+    }
+}
+```
