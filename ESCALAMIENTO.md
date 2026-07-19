@@ -5,9 +5,9 @@
 ### Decisión
 - **100 users/instancia** (EC2 t3.medium, Baileys ~15MB/sesión en idle)
 - **1 IP residencial estática por cada 10 users** (proxy SOCKS5)
-- **Gemini Flash** para AI (migrar desde Haiku cuando haya 100+ users)
-- **Costo target: $0.33/user/mes** (sin negociar bulk)
-- **Costo con bulk (1000+ users): $0.21/user/mes**
+- **AI dual: Haiku Batch para resúmenes + Gemini Flash para bot conversacional**
+- **Costo target: $0.435/user/mes** (con bot conversacional incluido)
+- **Costo sin bot: $0.33/user/mes**
 
 ### Cómo funciona el proxy
 - Cada instancia EC2 tiene 10 proxies residenciales asignados (100 users / 10 = 10 IPs)
@@ -245,25 +245,37 @@ setTimeout(() => startSession(userCfg), jitter);
 - [ ] Switchear (feature flag por usuario para A/B test)
 - [ ] Si se queda con Haiku, implementar optimizaciones:
 
-#### Optimización de costos Claude Haiku (sin cambiar de modelo)
+#### Decisión final AI: Haiku Batch + Gemini Flash
 
-| Optimización | Ahorro | Implementación |
-|---|---|---|
-| Reducir tokens input (pre-filtrar datos, solo próximos 3 días) | ~40% | Modificar `_format_data()` para enviar menos contexto |
-| Prompt caching (system prompt reutilizable) | ~25% | Activar cache en API Anthropic (tokens cacheados cuestan 90% menos) |
-| Batch API (envío masivo, respuesta en minutos) | 50% | Cambiar endpoint a `/v1/messages/batches`. Enviar a las 6:50AM, recibir antes de 7:00AM |
-| Skip days sin novedades (ya implementado) | ~25% | Ya funciona: viernes PM, sábado, domingo AM no se envían si no hay eventos |
+| Función | Motor | Modo | Costo/call | Por qué |
+|---|---|---|---|---|
+| Resúmenes AM/PM | Claude Haiku | Batch (50% desc) | $0.0025 | Mejor calidad de redacción, no necesita respuesta instantánea |
+| Bot conversacional | Gemini Flash | Normal (instantáneo) | $0.0005 | 6x más barato, respuesta inmediata, calidad suficiente para Q&A |
+| Calendar extraction | Claude Haiku | Batch | $0.0025 | Precisión en fechas/horas importa |
+| Alertas de conflicto | Gemini Flash | Normal | $0.0005 | Necesita ser rápido, análisis simple |
 
-**Progresión de costo/user/mes con Haiku:**
+**Costo total AI por usuario/mes:**
 
-| Nivel | Costo/user/mes | Qué se hace |
-|---|---|---|
-| Sin optimizar (actual) | $0.10 | 2 calls/día, ~3K tokens input |
-| + Reducir input | $0.06 | Pre-filtrar datos relevantes |
-| + Batch API | $0.03 | 50% descuento por batch |
-| + Skip days + cache | $0.025 | Máxima optimización |
+| Componente | Calls/día | Motor | Costo/user/mes |
+|---|---|---|---|
+| Resúmenes (AM+PM) | 2 | Haiku Batch | $0.05 |
+| Bot conversacional | 5 promedio | Gemini Flash | $0.075 |
+| Calendar extraction | 0.07 (2/mes) | Haiku Batch | $0.005 |
+| Alertas conflicto | 0.3 | Gemini Flash | $0.005 |
+| **Total AI** | | | **$0.135/user/mes** |
 
-**Conclusión:** Haiku optimizado ($0.025/user) es comparable a Gemini Flash ($0.02/user). La decisión es de calidad, no de costo.
+**Costo completo por usuario/mes (con bot conversacional):**
+
+| Componente | Costo/user/mes |
+|---|---|
+| EC2 Spot t3.medium (100 users/inst) | $0.112 |
+| EBS 16GB | $0.013 |
+| Proxy residencial (1 IP/10 users) | $0.175 |
+| AI (Haiku Batch + Gemini Flash) | $0.135 |
+| S3 + API Gateway | $0.01 |
+| **TOTAL** | **$0.445/user/mes** |
+| **1000 users** | **$445/mes** |
+| **Margen (cobrando $1.370 USD/colegio mediano)** | **97%** |
 
 
 ## Alta disponibilidad (Spot interruption handling)
