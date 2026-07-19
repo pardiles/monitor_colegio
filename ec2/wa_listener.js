@@ -61,13 +61,22 @@ async function botRespond(sock, groupId, question, userCfg) {
     const extras = (userCfg.extraprogramaticas || []).map(e => `${e.nombre}: ${e.dia} ${e.horario} (${e.hijo}) → sale ${e.hora_salida_real}`).join('\n');
     const horarios = loadJSON(path.join(DATA_DIR, 'horarios.json'), {});
     const calendario = loadJSON(path.join(DATA_DIR, `eventos_${userCfg.id}.json`), []);
-    const upcoming = calendario.filter(e => e.fecha >= new Date().toISOString().split('T')[0]).slice(0, 10);
+    const today = new Date().toISOString().split('T')[0];
+    const upcoming = calendario.filter(e => e.fecha >= today).slice(0, 20);
+    const eventosStr = upcoming.map(e => `${e.fecha}${e.hora ? ' '+e.hora : ''} | ${e.descripcion} | hijo=${e.hijo}${e.lugar ? ' | lugar='+e.lugar : ''}`).join('\n');
 
     const context = `Hijos: ${hijos}
+
 Extraprogramáticas:
 ${extras}
-Horarios: ${JSON.stringify(horarios).substring(0, 1000)}
-Próximos eventos: ${JSON.stringify(upcoming).substring(0, 1000)}`;
+
+Horarios semanales:
+${JSON.stringify(horarios).substring(0, 1500)}
+
+Próximos eventos (calendario):
+${eventosStr || 'Sin eventos próximos'}
+
+Fecha de hoy: ${today}`;
 
     const body = JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
@@ -179,17 +188,27 @@ async function startSession(userCfg) {
             // Monitor group (instrucciones de los padres)
             if (isMonitor) {
                 // Ignorar mensajes del bot (emojis de resumen)
-                if (body.startsWith('\u{1F4CB}') || body.startsWith('\u{1F4EC}') || body.startsWith('\u{1F680}') || body.startsWith('\u{1F9EA}') || body.startsWith('🤖')) return;
+                if (body.startsWith('\u{1F4CB}') || body.startsWith('\u{1F4EC}') || body.startsWith('\u{1F680}') || body.startsWith('\u{1F9EA}') || body.startsWith('🤖') || body.startsWith('✅')) return;
                 const monitorFile = path.join(DATA_DIR, `monitor_inputs_${userId}.json`);
                 const monitor = loadJSON(monitorFile, []);
                 monitor.push(entry);
                 saveJSON(monitorFile, cleanOld(monitor));
                 console.log(`[${userId}][MONITOR] ${entry.from}: ${body.substring(0, 50)}`);
 
-                // Bot conversacional: responder si es pregunta
-                botRespond(sock, groupId, body, userCfg).catch(e => {
-                    console.log(`[${userId}][BOT] Error: ${e.message}`);
-                });
+                // Bot: si tiene "?" → respuesta completa con AI
+                if (body.includes('?')) {
+                    botRespond(sock, groupId, body, userCfg).catch(e => {
+                        console.log(`[${userId}][BOT] Error: ${e.message}`);
+                    });
+                } else if (body.length > 5) {
+                    // Instrucción → confirmar con "Anotado" después de delay
+                    (async () => {
+                        const delay = 2000 + Math.random() * 3000;
+                        await new Promise(r => setTimeout(r, delay));
+                        await sock.sendMessage(groupId, { text: '✅ Anotado' });
+                        console.log(`[${userId}][BOT] Anotado: ${body.substring(0, 40)}`);
+                    })().catch(() => {});
+                }
             } else if (label) {
                 // Grupo del colegio
                 const messages = loadJSON(WA_MESSAGES_FILE, {});

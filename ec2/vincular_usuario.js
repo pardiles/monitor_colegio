@@ -198,6 +198,13 @@ async function createMonitorGroup(sock) {
         const groupId = group.id;
         console.log(`[${userId}] ✅ Grupo creado: ${groupId}`);
 
+        // Poner descripción del grupo
+        try {
+            await sock.groupUpdateDescription(groupId, '📚 Monitor Colegio - Asistente escolar por WhatsApp\n\n🤖 Pregúntame con "?" y te respondo al instante\n💡 Escribe instrucciones y las anoto\n📋 Resúmenes diarios AM (7:00) y PM (20:00)');
+        } catch (e) {
+            console.log(`[${userId}] No se pudo setear descripción: ${e.message}`);
+        }
+
         // Guardar el ID del grupo en S3
         await s3.send(new PutObjectCommand({
             Bucket: S3_BUCKET,
