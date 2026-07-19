@@ -270,3 +270,97 @@ Esto se puede empaquetar como módulo "Analytics de Comunicación Escolar" — $
 | 5 | $15.000.000 | + 1 persona |
 | 7 | $21.000.000 | + equipo de 3 |
 | 10 | $30.000.000 | Escala Latam |
+
+
+## Plan Comercial
+
+### Producto: Monitor Colegio
+Servicio B2B para colegios particulares. Resúmenes diarios automáticos por WhatsApp para apoderados + inteligencia de comunicación para la dirección.
+
+### Paquetes
+
+| Paquete | Incluye | Precio/mes |
+|---|---|---|
+| **Básico** | Resúmenes AM/PM por WA, calendario, fuentes del colegio. Hasta 500 alumnos. | $1.000.000 + $1.000/alumno extra |
+| **Comunicación** | Básico + canal directo del colegio por WA + read receipts + reportes de lectura | $2.000.000 + $1.000/alumno extra |
+| **Full** | Comunicación + inteligencia de grupos WA (sentimiento, alertas, insights semanales) | $2.700.000 + $1.000/alumno extra |
+
+### Condiciones
+- Primer mes gratis (prueba)
+- Contrato mínimo 12 meses
+- Setup incluido
+- Precios en UF (ajuste IPC automático)
+
+### Target
+- Colegios particulares pagados de Santiago
+- Comunas: Las Condes, Vitacura, Lo Barnechea, La Dehesa, Providencia, Ñuñoa
+- Mensualidad alumno >$300K
+- Usan SchoolNet/Colegium u otra plataforma digital
+- 300-1500 alumnos
+
+### Propuesta de valor por audiencia
+
+**Para el Director:**
+- "Visibilidad total de lo que pasa en los grupos de apoderados"
+- "Reducción de conflictos por desinformación"
+- "Diferenciación vs otros colegios (innovación)"
+
+**Para Comunicaciones:**
+- "95% de lectura por WA vs 25% por email"
+- "Saber exactamente quién no leyó una comunicación"
+- "Canal directo al apoderado sin depender de email ni app"
+
+**Para los Apoderados (el usuario final):**
+- "Nunca más te pierdes una prueba, reunión o actividad"
+- "Todo resumido en 1 mensaje de WhatsApp, 2 veces al día"
+- "5 minutos de setup, 0 esfuerzo después"
+
+### Plan de ventas primer año
+
+| Etapa | Mes | Acción | Meta |
+|---|---|---|---|
+| Piloto | 1 | Sagrado Corazón como caso de éxito (gratis) | Testimonial + métricas |
+| Lanzamiento | 2-3 | Contactar 10 colegios similares. Ofrecer mes gratis. | 2-3 colegios en prueba |
+| Tracción | 4-6 | Referidos + networking directo. Cerrar contratos anuales. | 5 colegios pagando |
+| Crecimiento | 7-9 | Contratar vendedor. Módulos premium. | 8-10 colegios |
+| Escala | 10-12 | Equipo completo. Segundo segmento (jardines/subvencionados). | 12+ colegios |
+
+### Proyección financiera primer año (paquete Básico $1.3M/colegio mediano)
+
+| Mes | Colegios | Ingreso | Costos (infra + equipo) | Profit |
+|---|---|---|---|---|
+| 1-3 | 0→2 | $3.900.000 acum | $57.000 | $3.843.000 |
+| 4-6 | 3→5 | $15.600.000 acum | $285.000 | $15.315.000 |
+| 7-9 (+ vendedor) | 6→8 | $27.300.000 acum | $9.500.000 | $17.800.000 |
+| 10-12 (+ IT) | 9→10 | $38.350.000 acum | $17.000.000 | $21.350.000 |
+| **Total año 1** | **10** | **$85.150.000** | **$26.842.000** | **$58.308.000** |
+
+### Proyección año 2 (con equipo, módulos premium, 2-3 colegios/mes nuevos)
+
+| Trimestre | Colegios | Ingreso acumulado trimestre | 
+|---|---|---|
+| Q1 | 13-16 | $50-60M |
+| Q2 | 17-22 | $70-85M |
+| Q3 | 23-28 | $90-110M |
+| Q4 | 29-34 | $110-135M |
+| **Total año 2** | **34** | **$320-390M** |
+
+### Métricas clave (KPIs)
+
+| Métrica | Meta año 1 | Meta año 2 |
+|---|---|---|
+| Colegios activos | 10 | 34 |
+| Tasa de adopción (familias registradas/total) | >50% | >65% |
+| Churn anual | <10% | <10% |
+| NPS apoderados | >60 | >70 |
+| Ingreso mensual recurrente (MRR) | $13M | $45M |
+
+### Riesgos y mitigaciones
+
+| Riesgo | Probabilidad | Mitigación |
+|---|---|---|
+| Colegium copia la feature | Media | Velocidad de ejecución + módulos que ellos no pueden hacer (WA bidireccional) |
+| Meta banea cuentas WA | Baja | Proxy residencial + sesiones estables |
+| Baja adopción de apoderados | Media | Onboarding ultra simple (5 min) + valor inmediato desde día 1 |
+| Colegio no renueva | Baja | Contrato anual + demostrar ROI con métricas de lectura |
+| Privacidad/datos personales | Media | Solo lectura de grupos que el apoderado elige. Sin acceso a privados. Cumplimiento RGPD/ley chilena. |
