@@ -206,6 +206,35 @@ async function createMonitorGroup(sock) {
             console.log(`[${userId}] Error promoviendo admins: ${e.message}`);
         }
 
+        // Poner logo del colegio como foto del grupo
+        try {
+            const colegioUrl = userCfg.colegio?.web_url || userCfg.colegios?.[0]?.web_url || '';
+            if (colegioUrl) {
+                const logoUrl = colegioUrl.replace(/\/$/, '') + '/favicon.ico';
+                const https = require('https');
+                const http = require('http');
+                const fetch = logoUrl.startsWith('https') ? https : http;
+                const logoBuffer = await new Promise((resolve, reject) => {
+                    fetch.get(logoUrl, (res) => {
+                        if (res.statusCode === 301 || res.statusCode === 302) {
+                            // Follow redirect
+                            fetch.get(res.headers.location, (r2) => {
+                                const chunks = []; r2.on('data', c => chunks.push(c)); r2.on('end', () => resolve(Buffer.concat(chunks)));
+                            }).on('error', reject);
+                        } else {
+                            const chunks = []; res.on('data', c => chunks.push(c)); res.on('end', () => resolve(Buffer.concat(chunks)));
+                        }
+                    }).on('error', reject);
+                });
+                if (logoBuffer.length > 100) {
+                    await sock.updateProfilePicture(groupId, logoBuffer);
+                    console.log(`[${userId}] Logo del colegio puesto como foto del grupo`);
+                }
+            }
+        } catch (e) {
+            console.log(`[${userId}] No se pudo poner logo: ${e.message}`);
+        }
+
         // Poner descripción del grupo (dinámica con nombres de hijos)
         try {
             const hijosNames = (userCfg.hijos || []).map(h => h.nombre || h.nombre_completo?.split(' ')[0] || '').filter(Boolean);
