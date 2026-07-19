@@ -200,7 +200,7 @@ async function createMonitorGroup(sock) {
 
         // Poner descripción del grupo
         try {
-            await sock.groupUpdateDescription(groupId, '📚 Monitor Colegio - Asistente escolar por WhatsApp\n\n🤖 Pregúntame con "?" y te respondo al instante\n💡 Escribe instrucciones y las anoto\n📋 Resúmenes diarios AM (7:00) y PM (20:00)');
+            await sock.groupUpdateDescription(groupId, '📚 Monitor Colegio - Asistente escolar 24/7\n\n📋 Resúmenes automáticos:\n• 7:00 AM — Lo que pasa hoy\n• 20:00 PM — Novedades + preparación para mañana\n• Domingo PM — Panorama de la semana\n\n🤖 Pregúntame lo que quieras (con ?):\n• ¿A qué hora sale Franco?\n• ¿Cuándo es la próxima prueba?\n• ¿Quién es la profesora jefe?\n\n💡 Escribe instrucciones y las anoto:\n• "Franco no va mañana"\n• "Blanca tiene cumpleaños viernes 17:00"');
         } catch (e) {
             console.log(`[${userId}] No se pudo setear descripción: ${e.message}`);
         }

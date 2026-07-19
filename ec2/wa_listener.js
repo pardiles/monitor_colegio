@@ -57,7 +57,12 @@ async function botRespond(sock, groupId, question, userCfg) {
     if (question.startsWith('🤖') || question.startsWith('📋') || question.startsWith('📬')) return;
 
     // Construir contexto del usuario
-    const hijos = (userCfg.hijos || []).map(h => `${h.nombre} (${h.curso})`).join(', ');
+    const hijos = (userCfg.hijos || []).map(h => {
+        let line = `${h.nombre} (${h.curso})`;
+        if (h.profesora_jefe) line += ` — Profesora jefe: ${h.profesora_jefe}`;
+        if (h.colegio) line += ` [${h.colegio}]`;
+        return line;
+    }).join('\n');
     const extras = (userCfg.extraprogramaticas || []).map(e => `${e.nombre}: ${e.dia} ${e.horario} (${e.hijo}) → sale ${e.hora_salida_real}`).join('\n');
     const horarios = loadJSON(path.join(DATA_DIR, 'horarios.json'), {});
     const calendario = loadJSON(path.join(DATA_DIR, `eventos_${userCfg.id}.json`), []);
@@ -65,16 +70,36 @@ async function botRespond(sock, groupId, question, userCfg) {
     const upcoming = calendario.filter(e => e.fecha >= today).slice(0, 20);
     const eventosStr = upcoming.map(e => `${e.fecha}${e.hora ? ' '+e.hora : ''} | ${e.descripcion} | hijo=${e.hijo}${e.lugar ? ' | lugar='+e.lugar : ''}`).join('\n');
 
-    const context = `Hijos: ${hijos}
+    // Datos adicionales del colegio (profesores, compañeros, etc.)
+    const colegio = userCfg.colegio || {};
+    const regimen = userCfg.regimen || {};
+
+    // Cargar contexto enriquecido (generado por el scraping diario)
+    const botContext = loadJSON(path.join(DATA_DIR, `bot_context_${userCfg.id}.json`), {});
+    const companeros = botContext.companeros ? `\nCompañeros por curso:\n${JSON.stringify(botContext.companeros).substring(0, 1000)}` : '';
+    const profesores = botContext.profesores ? `\nProfesores:\n${JSON.stringify(botContext.profesores)}` : '';
+    const calificaciones = botContext.calificaciones ? `\nCalificaciones (promedios):\n${JSON.stringify(botContext.calificaciones).substring(0, 800)}` : '';
+    const conducta = botContext.conducta ? `\nÚltimas anotaciones:\n${JSON.stringify(botContext.conducta).substring(0, 600)}` : '';
+    const asistencia = botContext.asistencia ? `\nAsistencia:\n${JSON.stringify(botContext.asistencia)}` : '';
+    const waReciente = botContext.whatsapp_reciente ? `\nMensajes recientes en grupos WA:\n${JSON.stringify(botContext.whatsapp_reciente).substring(0, 1000)}` : '';
+
+    const context = `Hijos:
+${hijos}
+
+Colegio: ${colegio.nombre || ''}
+${colegio.schoolnet_user ? 'Plataforma: SchoolNet (Colegium)' : ''}
 
 Extraprogramáticas:
-${extras}
+${extras || 'No configuradas'}
+
+Régimen custodia: ${regimen.tipo || 'No aplica'}${regimen.padre ? ` (${regimen.padre} / ${regimen.madre})` : ''}
 
 Horarios semanales:
 ${JSON.stringify(horarios).substring(0, 1500)}
 
 Próximos eventos (calendario):
 ${eventosStr || 'Sin eventos próximos'}
+${profesores}${calificaciones}${conducta}${asistencia}${companeros}${waReciente}
 
 Fecha de hoy: ${today}`;
 
@@ -189,19 +214,25 @@ async function startSession(userCfg) {
             if (isMonitor) {
                 // Ignorar mensajes del bot (emojis de resumen)
                 if (body.startsWith('\u{1F4CB}') || body.startsWith('\u{1F4EC}') || body.startsWith('\u{1F680}') || body.startsWith('\u{1F9EA}') || body.startsWith('🤖') || body.startsWith('✅')) return;
+
+                // Si es pregunta (tiene ?), NO guardar como instrucción — solo responder
+                if (body.includes('?')) {
+                    console.log(`[${userId}][MONITOR] Pregunta de ${entry.from}: ${body.substring(0, 50)}`);
+                    botRespond(sock, groupId, body, userCfg).catch(e => {
+                        console.log(`[${userId}][BOT] Error: ${e.message}`);
+                    });
+                    return;
+                }
+
+                // Guardar como instrucción (solo si NO es pregunta)
                 const monitorFile = path.join(DATA_DIR, `monitor_inputs_${userId}.json`);
                 const monitor = loadJSON(monitorFile, []);
                 monitor.push(entry);
                 saveJSON(monitorFile, cleanOld(monitor));
                 console.log(`[${userId}][MONITOR] ${entry.from}: ${body.substring(0, 50)}`);
 
-                // Bot: si tiene "?" → respuesta completa con AI
-                if (body.includes('?')) {
-                    botRespond(sock, groupId, body, userCfg).catch(e => {
-                        console.log(`[${userId}][BOT] Error: ${e.message}`);
-                    });
-                } else if (body.length > 5) {
-                    // Instrucción → confirmar con "Anotado" después de delay
+                // Confirmar instrucción con "Anotado" después de delay
+                if (body.length > 5) {
                     (async () => {
                         const delay = 2000 + Math.random() * 3000;
                         await new Promise(r => setTimeout(r, delay));
@@ -312,10 +343,29 @@ async function main() {
 
                 const userId = data.user_id;
                 const sock = activeSessions[userId];
-                if (!sock) {
-                    // No session for this user
+                if (!sock) continue;
+
+                // Comando especial (update description, etc.)
+                if (data.type === 'update_description') {
+                    data.status = 'processing';
+                    saveJSON(filePath, data);
+                    (async () => {
+                        try {
+                            await sock.groupUpdateDescription(data.group_id, data.description);
+                            data.status = 'sent';
+                            saveJSON(filePath, data);
+                            console.log(`[${userId}][CMD] Descripción actualizada`);
+                            setTimeout(() => { try { fs.unlinkSync(filePath); } catch {} }, 60000);
+                        } catch (e) {
+                            data.status = 'error'; data.error = e.message;
+                            saveJSON(filePath, data);
+                            console.log(`[${userId}][CMD] Error desc: ${e.message}`);
+                        }
+                    })();
                     continue;
                 }
+
+                // Mensaje normal
 
                 // Mark as processing to avoid re-entry
                 data.status = 'processing';

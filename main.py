@@ -596,6 +596,81 @@ def ingest_for_user(user_cfg: dict) -> dict:
         print(f"   ⚠️ Calendario: {e}")
         data["calendario_persistente"] = get_upcoming_events(days=14, user_id=user_id)
 
+    # Guardar contexto enriquecido para el bot conversacional
+    try:
+        bot_context = {}
+        # Compañeros (por hijo)
+        for key in data:
+            if key.startswith("companeros_"):
+                companeros_data = data[key]
+                if isinstance(companeros_data, dict) and companeros_data.get("companeros"):
+                    bot_context.setdefault("companeros", {})[key.replace("companeros_", "")] = [
+                        {"nombre": c.get("nombre", ""), "cumple": c.get("cumpleanos", "")}
+                        for c in companeros_data["companeros"][:40]
+                    ]
+        # Calificaciones (por hijo)
+        for key in data:
+            if key.startswith("calificaciones_"):
+                cal_data = data[key]
+                if isinstance(cal_data, dict):
+                    hijo_name = key.replace("calificaciones_", "")
+                    # Extraer resumen de notas (asignaturas + promedios)
+                    asigs = cal_data.get("asignaturas", cal_data.get("calificaciones", []))
+                    if isinstance(asigs, list):
+                        bot_context.setdefault("calificaciones", {})[hijo_name] = [
+                            {"asignatura": a.get("nombre", a.get("asignatura", "")), "promedio": a.get("promedio", "")}
+                            for a in asigs[:20] if isinstance(a, dict)
+                        ]
+        # Conducta/anotaciones (por hijo)
+        for key in data:
+            if key.startswith("conducta_"):
+                cond_data = data[key]
+                if isinstance(cond_data, dict):
+                    hijo_name = key.replace("conducta_", "")
+                    anotaciones = cond_data.get("anotaciones", cond_data.get("conducta", []))
+                    if isinstance(anotaciones, list):
+                        bot_context.setdefault("conducta", {})[hijo_name] = anotaciones[-10:]  # últimas 10
+        # Asistencia (por hijo)
+        for key in data:
+            if key.startswith("asistencia_"):
+                asist_data = data[key]
+                if isinstance(asist_data, dict):
+                    hijo_name = key.replace("asistencia_", "")
+                    bot_context.setdefault("asistencia", {})[hijo_name] = {
+                        "inasistencias": len(asist_data.get("inasistencias", [])),
+                        "ultimas": asist_data.get("inasistencias", [])[-5:]
+                    }
+        # Profesores (de hijos config)
+        bot_context["profesores"] = [
+            {"hijo": h["nombre"], "profesora_jefe": h.get("profesora_jefe", ""), "curso": h.get("curso", "")}
+            for h in user_cfg.get("hijos", [])
+        ]
+        # Colegio info
+        colegio = user_cfg.get("colegio", {})
+        if colegio:
+            bot_context["colegio"] = {"nombre": colegio.get("nombre", ""), "web": colegio.get("scinfo_url", "")}
+        # WhatsApp grupos monitoreados
+        wa_cfg = user_cfg.get("whatsapp", {})
+        bot_context["grupos_wa"] = list(wa_cfg.get("grupos_lectura", {}).values())
+        # Últimos mensajes WA relevantes (para contexto reciente)
+        wa_recientes = {}
+        for key in data:
+            if key.startswith("whatsapp_") and data[key]:
+                msgs = data[key][-10:]  # últimos 10 por grupo
+                wa_recientes[key.replace("whatsapp_", "")] = [
+                    {"from": m.get("from", ""), "body": m.get("body", "")[:100], "date": m.get("date", "")}
+                    for m in msgs
+                ]
+        if wa_recientes:
+            bot_context["whatsapp_reciente"] = wa_recientes
+
+        bot_context_file = os.path.join("data", f"bot_context_{user_id}.json")
+        with open(bot_context_file, "w", encoding="utf-8") as f:
+            json.dump(bot_context, f, indent=2, ensure_ascii=False)
+        print(f"   ✅ Bot context guardado ({len(json.dumps(bot_context))} chars)")
+    except Exception as e:
+        print(f"   ⚠️ Bot context: {e}")
+
     return data
 
 
