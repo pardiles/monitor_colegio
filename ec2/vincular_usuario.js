@@ -198,9 +198,12 @@ async function createMonitorGroup(sock) {
         const groupId = group.id;
         console.log(`[${userId}] ✅ Grupo creado: ${groupId}`);
 
-        // Poner descripción del grupo
+        // Poner descripción del grupo (dinámica con nombres de hijos)
         try {
-            await sock.groupUpdateDescription(groupId, '📚 Monitor Colegio - Asistente escolar 24/7\n\n📋 Resúmenes automáticos:\n• 7:00 AM — Lo que pasa hoy\n• 20:00 PM — Novedades + preparación para mañana\n• Domingo PM — Panorama de la semana\n\n🤖 Pregúntame lo que quieras (con ?):\n• ¿A qué hora sale Franco?\n• ¿Cuándo es la próxima prueba?\n• ¿Quién es la profesora jefe?\n\n💡 Escribe instrucciones y las anoto:\n• "Franco no va mañana"\n• "Blanca tiene cumpleaños viernes 17:00"');
+            const hijosNames = (userCfg.hijos || []).map(h => h.nombre || h.nombre_completo?.split(' ')[0] || '').filter(Boolean);
+            const hijosStr = hijosNames.length > 0 ? hijosNames.join(' y ') : 'tus hijos';
+            const desc = `📚 Monitor Colegio - Asistente escolar 24/7\n\n📋 Resúmenes automáticos:\n• 7:00 AM — Lo que pasa hoy\n• 20:00 PM — Novedades + preparación para mañana\n• Domingo PM — Panorama de la semana\n\n🤖 Pregúntame lo que quieras (con ?):\n• ¿A qué hora sale ${hijosNames[0] || 'mi hijo'}?\n• ¿Cuándo es la próxima prueba?\n• ¿Quién es la profesora jefe?\n\n💡 Escribe instrucciones y las anoto:\n• "${hijosNames[0] || 'Mi hijo'} no va mañana"\n• "${hijosNames[1] || hijosNames[0] || 'Mi hijo'} tiene cumpleaños viernes 17:00"`;
+            await sock.groupUpdateDescription(groupId, desc);
         } catch (e) {
             console.log(`[${userId}] No se pudo setear descripción: ${e.message}`);
         }
@@ -213,10 +216,22 @@ async function createMonitorGroup(sock) {
             ContentType: 'application/json',
         }));
 
-        // Enviar mensaje de bienvenida al grupo
-        const welcomeMsg = `👋 ¡Bienvenido al Monitor Colegio!\n\nEste grupo te enviará resúmenes diarios:\n• 📋 7:00 AM - Lo que pasa hoy\n• 📬 20:00 - Lo nuevo del día + mañana\n\n🤖 *Asistente 24/7:* Puedes hacerle preguntas al bot y te responde al instante:\n• "¿A qué hora sale Franco mañana?"\n• "¿Qué tiene Blanca el miércoles?"\n• "¿Cuándo es la próxima reunión?"\n\n💡 También puedes escribir instrucciones y el bot las tomará en cuenta:\n• "Simón no va al colegio mañana"\n• "Esperanza tiene cumpleaños viernes 17:00"\n\n📌 Tip: Fija este grupo arriba (mantén presionado → 📌) para no perderte los resúmenes.\n\nTu primer resumen llegará en unos minutos... ⏳`;
-        await sock.sendMessage(groupId, { text: welcomeMsg });
+        // Enviar mensaje de bienvenida al grupo y pinearlo
+        const hijosNombres = (userCfg.hijos || []).map(h => h.nombre || h.nombre_completo?.split(' ')[0] || '').filter(Boolean);
+        const hijosStr = hijosNombres.length > 0 ? hijosNombres.join(' y ') : 'tus hijos';
+        const ej1 = hijosNombres[0] || 'mi hijo';
+        const ej2 = hijosNombres[1] || hijosNombres[0] || 'mi hijo';
+        const welcomeMsg = `👋 ¡Bienvenido al Monitor Colegio!\n\nEste grupo te enviará resúmenes diarios sobre ${hijosStr}:\n• 📋 7:00 AM - Lo que pasa hoy\n• 📬 20:00 - Lo nuevo del día + mañana\n• 📅 Domingo PM - Panorama de la semana\n\n🤖 *Asistente 24/7:* Pregúntame lo que quieras (con ?):\n• "¿A qué hora sale ${ej1} mañana?"\n• "¿Cuándo es la próxima prueba?"\n• "¿Quién es la profesora jefe de ${ej2}?"\n\n💡 Escribe instrucciones y las anoto:\n• "${ej1} no va al colegio mañana"\n• "${ej2} tiene cumpleaños viernes 17:00"\n\n📌 Fija este mensaje para tenerlo siempre a mano.`;
+        const sentMsg = await sock.sendMessage(groupId, { text: welcomeMsg });
         console.log(`[${userId}] Mensaje de bienvenida enviado al grupo`);
+
+        // Pinear el mensaje
+        try {
+            await sock.chatModify({ pin: true }, groupId, [sentMsg.key]);
+            console.log(`[${userId}] Mensaje pineado`);
+        } catch (e) {
+            console.log(`[${userId}] No se pudo pinear: ${e.message}`);
+        }
 
     } catch (e) {
         console.error(`[${userId}] Error creando grupo monitor: ${e.message}`);
