@@ -25,9 +25,11 @@ const s3 = new S3Client({ region: REGION });
 
 const userId = process.argv[2];
 if (!userId) {
-    console.error('Uso: node vincular_usuario.js <user_id>');
+    console.error('Uso: node vincular_usuario.js <user_id> [method] [phone]');
     process.exit(1);
 }
+const method = process.argv[3] || 'qr'; // 'qr' o 'code'
+const phone = process.argv[4] || '';
 
 const authFolder = path.join(BASE_DIR, 'baileys_auth', userId);
 const qrFile = path.join('/tmp', `qr_${userId}.png`);
@@ -60,14 +62,38 @@ async function start() {
     const { state, saveCreds } = await useMultiFileAuthState(authFolder);
     const sock = makeWASocket({
         auth: state,
+        printQRInTerminal: false,
     });
 
     sock.ev.on('creds.update', saveCreds);
 
+    // Si es pairing code, solicitarlo apenas conecte al WS (antes de QR)
+    if (method === 'code' && phone) {
+        // Esperar a que el socket esté listo para solicitar pairing code
+        setTimeout(async () => {
+            try {
+                const cleanPhone = phone.replace(/[^0-9]/g, '');
+                console.log(`[${userId}] Solicitando pairing code para ${cleanPhone}...`);
+                const code = await sock.requestPairingCode(cleanPhone);
+                console.log(`[${userId}] Pairing code: ${code}`);
+                // Guardar code en S3 para que la landing lo muestre
+                await s3.send(new PutObjectCommand({
+                    Bucket: S3_BUCKET,
+                    Key: `whatsapp/pairing_code/${userId}.json`,
+                    Body: JSON.stringify({ code, timestamp: new Date().toISOString() }),
+                    ContentType: 'application/json',
+                }));
+                console.log(`[${userId}] Code subido a S3`);
+            } catch (e) {
+                console.error(`[${userId}] Error pairing code: ${e.message}`);
+            }
+        }, 3000);
+    }
+
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
-        if (qr) {
+        if (qr && method !== 'code') {
             console.log(`[${userId}] QR generado, subiendo a S3...`);
             try {
                 const QRCode = require('qrcode');
