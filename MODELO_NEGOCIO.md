@@ -121,3 +121,53 @@ Asumiendo vendedor cierra 2-3 colegios/mes:
 
 **Año 2 con equipo: ~$250M ingreso / ~$180M profit**
 
+
+
+## Expansión vertical
+
+### Módulos premium (upsell a colegios existentes)
+
+| Módulo | Cobro extra/mes | Descripción |
+|---|---|---|
+| Alertas de inasistencia | $300-500K | Aviso en tiempo real al apoderado si el hijo no llegó al colegio |
+| Reportes de engagement | $200-300K | Dashboard para el colegio: qué apoderados leen, cuáles no responden |
+| Canal bidireccional | $500-800K | Apoderado responde en el grupo WA y llega organizado al colegio |
+| Recordatorio de pagos | $300-500K | "Tu cuota vence en 3 días" — reduce morosidad |
+
+**Impacto:** con 10 colegios comprando 2 módulos extra → +$6-10M/mes adicionales.
+
+### Otros segmentos educativos
+
+| Segmento | Tamaño (Chile) | Pricing/mes | Adaptación necesaria |
+|---|---|---|---|
+| Jardines infantiles | 5.000+ | $500-800K | Simplificar (menos fuentes, foco en rutina diaria) |
+| Colegios subvencionados | 6.000+ | $300-500K | Precio más bajo, más volumen. Muchos usan Alexia/Syscol |
+| Universidades (padres de mechones) | 60+ | $2-5M | Fuentes distintas (portal alumno, emails, calendario académico) |
+| Preuniversitarios | 200+ | $500-1M | Resultados de ensayos, horarios, simulacros |
+
+### Expansión geográfica (Latam)
+
+Mismo producto, misma infra. Seguir la base de Colegium/Alexia en cada país.
+
+| País | Colegios particulares | Pricing estimado (USD/mes) | Plataformas dominantes |
+|---|---|---|---|
+| Colombia | 5.000+ | $500-1.000 | Colegium, Phidias, CiberColegio |
+| Perú | 3.000+ | $400-800 | Colegium, Sieweb |
+| México | 15.000+ | $600-1.200 | Colegium, Educamos |
+| Argentina | 4.000+ | $300-600 | Colegium, Aulica |
+
+**Requisitos para Latam:**
+- Adaptar scraping a plataformas locales (Phidias, Sieweb, etc.)
+- WhatsApp funciona igual en toda Latam (misma infra)
+- Proxy residencial por país (~mismos proveedores)
+- Gemini/Claude funciona igual (español neutro)
+
+### Roadmap de expansión
+
+| Fase | Timing | Foco | Ingreso adicional esperado |
+|---|---|---|---|
+| 1. Módulos premium | Mes 8-12 (año 1) | Alertas + reportes a colegios existentes | +$3-5M/mes |
+| 2. Jardines infantiles | Año 2 Q1 | Nuevo segmento Chile, pricing más bajo | +$3-5M/mes |
+| 3. Colombia | Año 2 Q2 | Primer país Latam, 5-10 colegios | +$5-10M/mes |
+| 4. Subvencionados | Año 2 Q3 | Volumen Chile (requiere precio bajo) | +$5-10M/mes |
+| 5. México + Perú | Año 3 | Escala Latam | +$20-50M/mes |
