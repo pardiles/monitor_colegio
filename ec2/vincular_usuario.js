@@ -147,6 +147,14 @@ async function start() {
             setTimeout(async () => {
                 await listGroups(sock);
                 await createMonitorGroup(sock);
+                // Reiniciar wa_listener para que cargue el nuevo grupo_monitor
+                try {
+                    const { execSync } = require('child_process');
+                    execSync('systemctl restart wa-listener');
+                    console.log(`[${userId}] wa_listener reiniciado`);
+                } catch (e) {
+                    console.log(`[${userId}] No se pudo reiniciar wa_listener: ${e.message}`);
+                }
                 console.log(`[${userId}] Vinculación completada. Saliendo.`);
                 process.exit(0);
             }, 5000);
