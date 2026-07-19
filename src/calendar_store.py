@@ -14,18 +14,27 @@ CHILE_TZ = ZoneInfo("America/Santiago")
 CALENDAR_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "eventos.json")
 
 
-def load_calendar() -> List[Dict]:
+def _calendar_file(user_id: Optional[str] = None) -> str:
+    """Retorna el path del archivo de calendario para un usuario."""
+    if user_id:
+        return os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", f"eventos_{user_id}.json")
+    return CALENDAR_FILE
+
+
+def load_calendar(user_id: Optional[str] = None) -> List[Dict]:
     """Carga el calendario persistente."""
-    if os.path.exists(CALENDAR_FILE):
-        with open(CALENDAR_FILE, "r", encoding="utf-8") as f:
+    path = _calendar_file(user_id)
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     return []
 
 
-def save_calendar(eventos: List[Dict]):
+def save_calendar(eventos: List[Dict], user_id: Optional[str] = None):
     """Guarda el calendario persistente."""
-    os.makedirs(os.path.dirname(CALENDAR_FILE), exist_ok=True)
-    with open(CALENDAR_FILE, "w", encoding="utf-8") as f:
+    path = _calendar_file(user_id)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(eventos, f, indent=2, ensure_ascii=False)
 
 
@@ -37,6 +46,7 @@ def add_event(
     fuente: str = "manual",
     hora: Optional[str] = None,
     lugar: Optional[str] = None,
+    user_id: Optional[str] = None,
 ) -> bool:
     """
     Agrega un evento al calendario si no existe ya uno similar.
@@ -49,11 +59,12 @@ def add_event(
         fuente: "scinfo", "email", "whatsapp", "calendario_web", "manual"
         hora: "HH:MM" opcional
         lugar: texto opcional
+        user_id: ID del usuario (para calendario separado por usuario)
     
     Returns:
         True si se agregó (nuevo), False si ya existía
     """
-    calendario = load_calendar()
+    calendario = load_calendar(user_id)
     
     # Verificar si ya existe un evento similar (misma fecha + descripción similar)
     for ev in calendario:
@@ -74,13 +85,13 @@ def add_event(
         evento["lugar"] = lugar
     
     calendario.append(evento)
-    save_calendar(calendario)
+    save_calendar(calendario, user_id)
     return True
 
 
-def get_upcoming_events(days: int = 14) -> List[Dict]:
+def get_upcoming_events(days: int = 14, user_id: Optional[str] = None) -> List[Dict]:
     """Obtiene eventos de los próximos N días."""
-    calendario = load_calendar()
+    calendario = load_calendar(user_id)
     today = datetime.now(CHILE_TZ).date()
     cutoff = today + timedelta(days=days)
     
@@ -96,14 +107,14 @@ def get_upcoming_events(days: int = 14) -> List[Dict]:
     return sorted(upcoming, key=lambda x: x["fecha"])
 
 
-def cleanup_past_events():
+def cleanup_past_events(user_id: Optional[str] = None):
     """Elimina eventos cuya fecha ya pasó (más de 1 día)."""
-    calendario = load_calendar()
+    calendario = load_calendar(user_id)
     yesterday = (datetime.now(CHILE_TZ) - timedelta(days=1)).strftime("%Y-%m-%d")
     
     filtered = [ev for ev in calendario if ev["fecha"] >= yesterday]
     if len(filtered) < len(calendario):
-        save_calendar(filtered)
+        save_calendar(filtered, user_id)
 
 
 def extract_events_from_scinfo(scinfo_content: str) -> List[Dict]:
@@ -277,7 +288,7 @@ Ejemplo: [{{"fecha":"2026-07-22","descripcion":"Entrevista apoderados Franco 5°
     return []
 
 
-def update_calendar_from_sources(data: Dict) -> int:
+def update_calendar_from_sources(data: Dict, user_id: Optional[str] = None) -> int:
     """
     Actualiza el calendario persistente con datos de todas las fuentes.
     Usa Claude para analizar TODAS las fuentes y extraer eventos futuros.
@@ -342,7 +353,7 @@ def update_calendar_from_sources(data: Dict) -> int:
         try:
             events = _extract_events_with_ai_all(all_texts)
             for ev in events:
-                if add_event(**ev):
+                if add_event(**ev, user_id=user_id):
                     new_count += 1
                     print(f"   📅 Nuevo evento: {ev['fecha']} - {ev['descripcion'][:50]}")
         except Exception as e:
@@ -351,7 +362,7 @@ def update_calendar_from_sources(data: Dict) -> int:
             if "emails" in data and data["emails"]:
                 events = extract_events_from_emails(data["emails"])
                 for ev in events:
-                    if add_event(**ev):
+                    if add_event(**ev, user_id=user_id):
                         new_count += 1
     
     # Desde calendario web del colegio (API directa, no necesita AI)
@@ -389,7 +400,7 @@ def update_calendar_from_sources(data: Dict) -> int:
                         hijo = matching_hijos.pop()
 
                 if add_event(fecha=fecha, descripcion=desc[:150], tipo="evento",
-                           hijo=hijo, fuente="calendario_web"):
+                           hijo=hijo, fuente="calendario_web", user_id=user_id):
                     new_count += 1
 
     # Desde pagos (vencimientos)
@@ -400,11 +411,11 @@ def update_calendar_from_sources(data: Dict) -> int:
             monto = pago.get("monto", "") if isinstance(pago, dict) else ""
             if fecha and fecha >= datetime.now(CHILE_TZ).strftime("%Y-%m-%d"):
                 desc = f"💰 Vencimiento pago colegio - ${monto}" if monto else "💰 Vencimiento pago colegio"
-                if add_event(fecha=fecha, descripcion=desc, tipo="evento", hijo="ambos", fuente="schoolnet_pagos"):
+                if add_event(fecha=fecha, descripcion=desc, tipo="evento", hijo="ambos", fuente="schoolnet_pagos", user_id=user_id):
                     new_count += 1
     
     # Limpiar eventos pasados
-    cleanup_past_events()
+    cleanup_past_events(user_id)
     
     return new_count
 

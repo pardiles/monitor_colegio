@@ -560,14 +560,14 @@ def ingest_for_user(user_cfg: dict) -> dict:
     print("\n📅 Calendario persistente...")
     try:
         data["_user_cfg"] = user_cfg  # Para que calendar_store pueda asignar hijo por nivel
-        new_events = update_calendar_from_sources(data)
+        new_events = update_calendar_from_sources(data, user_id=user_id)
         del data["_user_cfg"]
-        upcoming = get_upcoming_events(days=14)
+        upcoming = get_upcoming_events(days=14, user_id=user_id)
         data["calendario_persistente"] = upcoming
         print(f"   ✅ {new_events} eventos nuevos, {len(upcoming)} próximos 14 días")
     except Exception as e:
         print(f"   ⚠️ Calendario: {e}")
-        data["calendario_persistente"] = get_upcoming_events(days=14)
+        data["calendario_persistente"] = get_upcoming_events(days=14, user_id=user_id)
 
     return data
 
