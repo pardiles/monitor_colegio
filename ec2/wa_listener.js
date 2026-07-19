@@ -93,7 +93,11 @@ async function botRespond(sock, groupId, question, userCfg) {
                 const nombres = asigs.map(a => a.asignatura).filter(Boolean).join(', ');
                 const notas = asigs.filter(a => a.promedio).map(a => `${a.asignatura}: ${a.promedio}`).join(', ');
                 calificacionesTxt += `\nAsignaturas de ${hijo}: ${nombres}`;
-                if (notas) calificacionesTxt += `\nNotas de ${hijo}: ${notas}`;
+                if (notas) {
+                    calificacionesTxt += `\nNotas de ${hijo}: ${notas}`;
+                } else {
+                    calificacionesTxt += `\nNotas de ${hijo}: Las notas del 2° semestre aún no están cargadas en SchoolNet. Las del 1° semestre se actualizarán próximamente.`;
+                }
             }
         }
     }
@@ -130,8 +134,16 @@ async function botRespond(sock, groupId, question, userCfg) {
                     }
                 }
                 if (fechas.length > 0) {
-                    asistenciaTxt += `. Fechas: ${fechas.slice(-10).join(', ')}`;
+                    asistenciaTxt += `. Fechas inasistencias: ${fechas.slice(-10).join(', ')}`;
                 }
+            }
+            // Atrasos
+            if (info.atrasos && Array.isArray(info.atrasos) && info.atrasos.length > 0) {
+                const atrasosStr = info.atrasos.slice(-5).map(a => {
+                    if (typeof a === 'object') return `${a.fecha || ''} ${a.asig || ''}`;
+                    return String(a);
+                }).join(', ');
+                asistenciaTxt += `. Atrasos: ${atrasosStr}`;
             }
         }
     }

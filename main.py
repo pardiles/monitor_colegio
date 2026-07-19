@@ -667,7 +667,8 @@ def ingest_for_user(user_cfg: dict) -> dict:
                     hijo_name = key.replace("asistencia_", "")
                     bot_context.setdefault("asistencia", {})[hijo_name] = {
                         "inasistencias": len(asist_data.get("inasistencias", [])),
-                        "ultimas": asist_data.get("inasistencias", [])[-5:]
+                        "ultimas": asist_data.get("inasistencias", [])[-5:],
+                        "atrasos": asist_data.get("atrasos", []),
                     }
         # Profesores (de hijos config)
         bot_context["profesores"] = [
