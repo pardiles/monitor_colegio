@@ -171,3 +171,102 @@ Mismo producto, misma infra. Seguir la base de Colegium/Alexia en cada país.
 | 3. Colombia | Año 2 Q2 | Primer país Latam, 5-10 colegios | +$5-10M/mes |
 | 4. Subvencionados | Año 2 Q3 | Volumen Chile (requiere precio bajo) | +$5-10M/mes |
 | 5. México + Perú | Año 3 | Escala Latam | +$20-50M/mes |
+
+
+## Data como producto
+
+### Activo principal: canal directo con el apoderado por WhatsApp
+
+Con miles de apoderados conectados vía WhatsApp, el canal es el activo más valioso del negocio — más que la tecnología o los resúmenes. Permite comunicación push directa, personalizada, con tasa de lectura >95%.
+
+### Data extraíble de grupos WA (agregada, anonimizada)
+
+| Data | Ejemplo | Cliente potencial |
+|---|---|---|
+| Temas más discutidos/mes | "Oct: 40% uniformes, 30% transporte, 20% evaluaciones" | El colegio (anticipar problemas) |
+| Sentimiento de apoderados | "Semana 15-jul: sentimiento negativo por cambio horario" | Dirección del colegio |
+| Preguntas frecuentes no resueltas | "35% pregunta lo mismo: ¿hora de salida?" | Colegio (mejorar comunicación) |
+| Detección de conflictos | "Grupo 3°B: tensión alta, tema bullying" | Convivencia escolar |
+| Influenciadores de opinión | "3 apoderados generan 60% de conversaciones" | Dirección (gestión de stakeholders) |
+| Necesidades no cubiertas | "Se menciona 'furgón' 50 veces/mes" | Empresas de transporte escolar |
+| Efectividad de comunicaciones del colegio | "70% leyó la circular, 30% sigue preguntando" | Comunicaciones del colegio |
+
+### Cierre del loop de comunicación (upsell al colegio)
+
+El colegio hoy manda circulares sin saber si se leyeron ni qué efecto tuvieron. Con nuestra data:
+- "El 70% de los apoderados leyó la circular del lunes"
+- "En el grupo de 5°A siguen preguntando por la fecha del paseo — la comunicación no fue clara"
+- "El cambio de horario generó 45 mensajes negativos en 2 horas — intervenir"
+
+Esto se puede empaquetar como módulo "Analytics de Comunicación Escolar" — $500K-1M extra/mes por colegio.
+
+### Monetización del canal (con cautela)
+
+| Producto | Descripción | Quién paga | Pricing |
+|---|---|---|---|
+| Ofertas segmentadas | "Feria uniformes sábado" a apoderados de 1°-4° | Empresas de uniforme | $200-500K/campaña |
+| Encuestas rápidas | "¿Inscribirías a tu hijo en robótica?" | Empresas de talleres | $300-800K/encuesta |
+| Promoción de eventos | "Obra infantil, 20% dcto familias SC" | Productoras | $100-300K/envío |
+
+**⚠️ Riesgo:** si el apoderado siente spam, pierde confianza. Solo con consentimiento explícito y contenido de valor real para la familia.
+
+### Timing
+- Módulo Analytics: viable con 10+ colegios (año 1)
+- Monetización del canal: viable con 50+ colegios y opt-in del apoderado (año 2-3)
+- Venta de data agregada: viable con 100+ colegios (año 3+)
+
+
+## Módulos premium detallados
+
+### Módulo 1: Canal de comunicación directa + Read Receipts ($1M extra/mes)
+
+**Qué incluye:**
+- El colegio envía comunicados urgentes vía nuestro canal WA (95% lectura vs 25% email)
+- Reporte de lectura: quién leyó, quién no, por curso
+- Alerta: "estos 15 apoderados no leyeron la comunicación del viernes"
+
+**Implementación técnica (pendiente):**
+- Agregar listener de `messages.update` en wa_listener.js para detectar read receipts (doble check azul)
+- Guardar log por mensaje: {msg_id, destinatario, enviado_at, leido_at}
+- Endpoint API para que el colegio vea reportes
+
+**Valor para el colegio:** elimina el problema #1 ("no me avisaron") con evidencia objetiva.
+
+### Módulo 2: Inteligencia de grupos WA ($700K extra/mes)
+
+**Qué incluye:**
+- Reporte semanal de clima escolar por curso (sentimiento, temas top, alertas)
+- Alertas en tiempo real de conflictos ("12 mensajes negativos sobre tema X en última hora")
+- Detección de desinformación ("se dice en grupo que mañana no hay clases — es falso")
+- Identificación de preguntas frecuentes no resueltas
+
+**Para quién:**
+- Director: visión general, anticipar conflictos
+- Convivencia escolar: detección temprana bullying/tensión
+- Comunicaciones: qué se entendió mal, qué reforzar
+- Profesores jefe: qué se dice de su curso
+
+**Implementación técnica:**
+- Análisis semanal con AI (Gemini/Claude) de mensajes agregados por grupo
+- Clasificación de sentimiento (positivo/negativo/neutro)
+- Extracción de temas recurrentes
+- Alertas si sentimiento negativo supera umbral
+
+### Pricing full stack
+
+| Módulo | Cobro/mes |
+|---|---|
+| Base (resúmenes a apoderados, hasta 500 alumnos) | $1.000.000 |
+| Canal de comunicación directa + read receipts | $1.000.000 |
+| Inteligencia de grupos WA | $700.000 |
+| Alumno extra (sobre 500) | $1.000/alumno |
+| **Total colegio mediano (800 alumnos, full)** | **$3.000.000/mes** |
+
+### Proyección con módulos premium
+
+| Colegios (full stack $3M) | Ingreso/mes | Para tu sueldo ($8M) |
+|---|---|---|
+| 3 | $9.000.000 | ✅ Cubierto |
+| 5 | $15.000.000 | + 1 persona |
+| 7 | $21.000.000 | + equipo de 3 |
+| 10 | $30.000.000 | Escala Latam |
