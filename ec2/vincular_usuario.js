@@ -311,6 +311,20 @@ async function createMonitorGroup(sock) {
             ContentType: 'application/json',
         }));
 
+        // Actualizar users.json local con el nuevo grupo_monitor
+        try {
+            const usersFile2 = path.join(BASE_DIR, 'config', 'users.json');
+            const users2 = JSON.parse(fs.readFileSync(usersFile2, 'utf-8'));
+            const u2 = users2.find(u => u.id === userId);
+            if (u2 && u2.whatsapp) {
+                u2.whatsapp.grupo_monitor = groupId;
+                fs.writeFileSync(usersFile2, JSON.stringify(users2, null, 2), 'utf-8');
+                console.log(`[${userId}] grupo_monitor actualizado en users.json`);
+            }
+        } catch (e) {
+            console.log(`[${userId}] Error actualizando users.json: ${e.message}`);
+        }
+
         // Enviar mensaje de bienvenida al grupo y pinearlo
         const hijosNombres = (userCfg.hijos || []).map(h => h.nombre || h.nombre_completo?.split(' ')[0] || '').filter(Boolean);
         const hijosStr = hijosNombres.length > 0 ? hijosNombres.join(' y ') : 'tus hijos';
