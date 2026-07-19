@@ -653,6 +653,21 @@ def ingest_for_user(user_cfg: dict) -> dict:
     # Horarios
     data["horarios"] = _load_horarios()
 
+    # Extraer eventos de WA y emails con AI (cumpleaños, paseos, partidos, etc.)
+    print("\n🔍 Extrayendo eventos de mensajes...")
+    try:
+        ai_key = os.getenv("ANTHROPIC_API_KEY", "")
+        if ai_key:
+            from src.sources.event_extractor import process_and_store_events
+            wa_msgs = {k.replace("whatsapp_", ""): v for k, v in data.items() if k.startswith("whatsapp_") and v}
+            emails_data = data.get("emails", [])
+            hijos = user_cfg.get("hijos", [])
+            extracted = process_and_store_events(wa_msgs, emails_data, hijos, ai_key, user_id)
+            if extracted:
+                data["eventos_extraidos"] = extracted
+    except Exception as e:
+        print(f"   ⚠️ Event extraction: {e}")
+
     # Calendario persistente: actualizar con datos nuevos y cargar próximos eventos
     print("\n📅 Calendario persistente...")
     try:

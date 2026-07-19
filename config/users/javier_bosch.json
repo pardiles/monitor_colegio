@@ -14,7 +14,7 @@
   "gmail": {
     "credentials_file": "",
     "token_file": "",
-    "school_domains": ["sanignacio.cl", "colegiumalert.com"]
+    "school_domains": ["sanignacio.cl", "colegiumalert.com", "colegium.com"]
   },
   "whatsapp": {
     "phone": "",

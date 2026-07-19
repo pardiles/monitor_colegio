@@ -18,7 +18,7 @@
       {
         "email": "moralesg.rafa@gmail.com",
         "token_file": "config/tokens/rafael_token.json",
-        "school_domains": ["saintgeorge.cl", "colegiumalert.com"],
+        "school_domains": ["saintgeorge.cl", "colegiumalert.com", "colegium.com"],
         "hijo": "todos"
       }
     ],

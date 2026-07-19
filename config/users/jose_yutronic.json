@@ -1,0 +1,35 @@
+{
+  "id": "jose_yutronic",
+  "nombre": "Jose Yutronic",
+  "hijos": [],
+  "colegio": {
+    "nombre": "Alianza Francesa (LaFase)",
+    "web_url": "https://lafase.cl/",
+    "calendario_url": "https://lafase.cl/calendario_escolar/",
+    "talleres_url": "https://lafase.cl/vida-del-colegio/actividades-extraprogramaticas/",
+    "deportiva_url": "https://lafase.cl/vida-del-colegio/asociacion-deportiva/",
+    "casino_url": "https://lafase.cl/vida-del-colegio/casino/",
+    "scinfo_url": null,
+    "schoolnet_user": "",
+    "schoolnet_pass": "",
+    "pronote_url": "https://4170004n.index-education.net/pronote/",
+    "pronote_user": "",
+    "pronote_pass": ""
+  },
+  "gmail": {
+    "credentials_file": "",
+    "token_file": "",
+    "school_domains": ["lafase.cl"]
+  },
+  "whatsapp": {
+    "phone": "",
+    "auth_folder": "baileys_auth/jose_yutronic",
+    "grupos_lectura": {},
+    "grupo_envio": null,
+    "grupo_monitor": null,
+    "destinatarios_monitor": []
+  },
+  "regimen": null,
+  "extraprogramaticas": [],
+  "pagos": null
+}

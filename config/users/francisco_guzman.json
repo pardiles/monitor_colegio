@@ -17,7 +17,7 @@
   "gmail": {
     "credentials_file": "",
     "token_file": "",
-    "school_domains": ["ssccmanquehue.cl", "colegiumalert.com"]
+    "school_domains": ["ssccmanquehue.cl", "colegiumalert.com", "colegium.com"]
   },
   "whatsapp": {
     "phone": "",
