@@ -363,3 +363,59 @@ Servicio B2B para colegios particulares. Resúmenes diarios automáticos por Wha
 | Baja adopción de apoderados | Media | Onboarding ultra simple (5 min) + valor inmediato desde día 1 |
 | Colegio no renueva | Baja | Contrato anual + demostrar ROI con métricas de lectura |
 | Privacidad/datos personales | Media | Solo lectura de grupos que el apoderado elige. Sin acceso a privados. Cumplimiento RGPD/ley chilena. |
+
+
+## Análisis de Competencia
+
+### Competidores directos (comunicación escolar Chile)
+
+| Competidor | Qué hace | Precio | Limitación vs nosotros |
+|---|---|---|---|
+| **Colegium/SchoolNet** | Plataforma completa: notas, asistencia, pagos, comunicaciones | $500K-1.5M/mes | Pull (apoderado tiene que abrir la app). No tiene AI ni WA. No resume. |
+| **Napsis/SND** | Gestión escolar (2000+ colegios en Chile). 200 funcionalidades. | Similar a Colegium | Misma limitación: pull, no push. Sin WhatsApp. |
+| **Alexia (Educaria)** | Plataforma escolar para subvencionados | $200-500K/mes | No tiene comunicación directa a apoderados por WA |
+| **Radar Escolar** (adquirido por Colegium 2022) | Sincronizaba datos entre plataformas | Integrado en Colegium | Ya no existe como producto independiente |
+
+### Competidores internacionales (comunicación escolar)
+
+| Competidor | Qué hace | Mercado | Diferencia vs nosotros |
+|---|---|---|---|
+| **ParentSquare** | Comunicación escolar: alertas, mensajes, formularios, pagos | USA (premio EdTech 2025) | No usa WA, no tiene AI para resumir. Solo en inglés. |
+| **TalkingPoints** | Comunicación familia-escuela con traducción AI | USA (9M+ usuarios) | Foco en traducción multiidioma. No resume fuentes múltiples. |
+| **ClassDojo** | Red social colegio-familia (comportamiento, fotos, mensajes) | Global (gratis) | No tiene AI, no resume, no integra WA. Es una app más que el papá tiene que abrir. |
+| **Remind** | Mensajería para colegios (SMS/app) | USA | Solo envía, no lee ni resume. Sin inteligencia. |
+| **Bloomz** | Comunicación + voluntariado + pagos | USA | App propia (no WA). Pull, no push. |
+
+### Competidores AI + Educación
+
+| Competidor | Qué hace | Diferencia vs nosotros |
+|---|---|---|
+| **MagicSchool AI** | Genera newsletters y comunicaciones para profesores | Ayuda al PROFESOR a escribir, no resume para el APODERADO |
+| **Brisk Teaching** | AI para crear contenido educativo | Para profesores, no para familias |
+| **TeacherMatic** | Templates de comunicación con AI | Generación de contenido, no consumo/resumen |
+
+### Nuestra diferenciación
+
+**Nadie en el mercado hace exactamente esto:**
+
+| Característica | Nosotros | Competencia |
+|---|---|---|
+| Canal: WhatsApp (95% lectura) | ✅ | ❌ (todos usan app propia o email) |
+| Resume MÚLTIPLES fuentes (WA + email + plataforma + web) | ✅ | ❌ (cada uno solo muestra su propia data) |
+| AI genera resumen personalizado por familia | ✅ | ❌ |
+| Push 2x/día sin esfuerzo del apoderado | ✅ | ❌ (todos son pull: "abre la app") |
+| Lee grupos WA del colegio | ✅ | ❌ (ninguno puede hacer esto) |
+| Inteligencia de grupos (sentimiento, alertas) | ✅ | ❌ |
+| Read receipts por apoderado | ✅ | Parcial (email open rate solamente) |
+
+### Moat (barrera de entrada)
+
+| Barrera | Fortaleza | Duración |
+|---|---|---|
+| Integración con WhatsApp (Baileys) | Media | Replicable en 2-3 meses por equipo técnico |
+| Prompt engineering + calendar extraction | Baja | Cualquiera con Claude/GPT puede hacerlo |
+| Red de colegios + contratos anuales | **Alta** | Lock-in real: cuesta cambiar una vez implementado |
+| Data acumulada de grupos WA | **Alta** | Años de histórico = ventaja irreplicable |
+| Relación con directores | **Alta** | Confianza se construye con tiempo |
+
+**Conclusión:** la barrera técnica es baja pero la barrera comercial es alta. El que llega primero a un colegio y funciona bien, se queda. El costo de cambio para el colegio es alto (re-vincular 500 WhatsApps).
