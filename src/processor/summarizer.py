@@ -98,12 +98,23 @@ def build_context(user_cfg: Optional[Dict] = None) -> str:
     lines.append("""
 REGLAS GENERALES:
 - SIEMPRE indicar a qué hijo aplica cada información
-- Las comunicaciones/SC Info son la fuente más confiable para horarios y actividades
-- Si las comunicaciones indican salida anticipada o sin extras, usar esa info
 - Entrevistas/reuniones: incluir SIEMPRE fecha, hora y lugar
 - Omitir secciones vacías
-- Español chileno natural
+- Español chileno natural""")
 
+    # Fuente más confiable (depende del colegio)
+    if colegio and colegio.get("scinfo_url"):
+        lines.append("- Las comunicaciones/SC Info son la fuente más confiable para horarios y actividades del colegio")
+    elif colegios:
+        for col in colegios:
+            nombre_col = col.get("nombre", "")
+            if col.get("plataforma_notas") and "cuadernorojo" in col.get("plataforma_notas", {}).get("url", "").lower():
+                lines.append(f"- Para {nombre_col}: Cuaderno Rojo es la fuente más confiable")
+            elif col.get("web_url"):
+                lines.append(f"- Para {nombre_col}: la web del colegio y emails son la fuente más confiable")
+    lines.append("- Si las comunicaciones indican salida anticipada o sin extras, usar esa info")
+
+    lines.append("""
 PRIORIDAD ABSOLUTA - FECHAS Y HORARIOS:
 - SIEMPRE incluir qué toca MAÑANA: pruebas, entrevistas, reuniones, actividades, hora de salida
 - Si hay entrevista/reunión con hora y lugar, NUNCA omitirla
