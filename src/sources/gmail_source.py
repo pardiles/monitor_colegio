@@ -34,25 +34,48 @@ class GmailClient:
         self.service = None
 
     def authenticate(self):
-        """Autenticar con Gmail API (usa token guardado si existe)."""
+        """Autenticar con Gmail API (usa token guardado si existe).
+        
+        Soporta dos formatos de token:
+        - google-auth (generado por InstalledAppFlow local)
+        - OAuth2 raw (generado por la Lambda/landing: {access_token, refresh_token, ...})
+        """
         creds = None
 
         if os.path.exists(self.token_file):
-            creds = Credentials.from_authorized_user_file(
-                self.token_file, SCOPES
-            )
+            # Intentar formato google-auth primero
+            try:
+                creds = Credentials.from_authorized_user_file(
+                    self.token_file, SCOPES
+                )
+            except Exception:
+                # Fallback: formato raw de Lambda (access_token, refresh_token directo)
+                import json
+                with open(self.token_file, "r", encoding="utf-8") as f:
+                    token_data = json.load(f)
+                creds = Credentials(
+                    token=token_data.get("access_token"),
+                    refresh_token=token_data.get("refresh_token"),
+                    token_uri="https://oauth2.googleapis.com/token",
+                    client_id=token_data.get("client_id", os.environ.get("GOOGLE_CLIENT_ID", "")),
+                    client_secret=token_data.get("client_secret", os.environ.get("GOOGLE_CLIENT_SECRET", "")),
+                    scopes=SCOPES,
+                )
 
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
+                # Guardar token actualizado en formato google-auth
+                with open(self.token_file, "w") as f:
+                    f.write(creds.to_json())
             else:
+                # Solo funciona en modo interactivo (desarrollo local)
                 flow = InstalledAppFlow.from_client_secrets_file(
                     self.credentials_file, SCOPES
                 )
                 creds = flow.run_local_server(port=0)
-
-            with open(self.token_file, "w") as f:
-                f.write(creds.to_json())
+                with open(self.token_file, "w") as f:
+                    f.write(creds.to_json())
 
         self.service = build("gmail", "v1", credentials=creds)
 

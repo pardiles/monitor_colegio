@@ -23,6 +23,9 @@ echo "$(TZ='America/Santiago' date) - Modo: $MODE | WA: $WA_MODE" >> /var/log/mo
 # Sync usuarios desde S3 (nuevos registros de la landing)
 aws s3 sync s3://monitor-colegio-config-669294688330/config/users/ /opt/monitor-colegio/config/users/ >> /var/log/monitor-colegio.log 2>&1
 
+# Sync tokens Gmail desde S3 (generados por la landing OAuth)
+aws s3 sync s3://monitor-colegio-config-669294688330/config/tokens/ /opt/monitor-colegio/config/tokens/ >> /var/log/monitor-colegio.log 2>&1
+
 node fetch_whatsapp.js $WA_MODE >> /var/log/monitor-colegio.log 2>&1
 
 # xvfb-run para Cuaderno Rojo (Cloudflare requiere browser headed)

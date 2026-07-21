@@ -82,10 +82,6 @@ async function botRespond(sock, groupId, question, userCfg) {
     }).join('\n');
     const extras = (userCfg.extraprogramaticas || []).map(e => `${e.nombre}: ${e.dia} ${e.horario} (${e.hijo}) → sale ${e.hora_salida_real}`).join('\n');
     const horarios = loadJSON(path.join(DATA_DIR, 'horarios.json'), {});
-    const calendario = loadJSON(path.join(DATA_DIR, `eventos_${userCfg.id}.json`), []);
-    const today = new Date().toISOString().split('T')[0];
-    const upcoming = calendario.filter(e => e.fecha >= today).slice(0, 20);
-    const eventosStr = upcoming.map(e => `${e.fecha}${e.hora ? ' '+e.hora : ''} | ${e.descripcion} | hijo=${e.hijo}${e.lugar ? ' | lugar='+e.lugar : ''}`).join('\n');
 
     // Datos adicionales del colegio (profesores, compañeros, etc.)
     const colegio = userCfg.colegio || {};
@@ -93,6 +89,15 @@ async function botRespond(sock, groupId, question, userCfg) {
 
     // Cargar contexto enriquecido (generado por el scraping diario)
     const botContext = loadJSON(path.join(DATA_DIR, `bot_context_${userCfg.id}.json`), {});
+
+    let calendario = loadJSON(path.join(DATA_DIR, `eventos_${userCfg.id}.json`), []);
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Santiago' }); // YYYY-MM-DD en hora Chile
+    let upcoming = calendario.filter(e => e.fecha >= today).slice(0, 20);
+    // Fallback: si no hay eventos en archivo directo, usar bot_context.calendario
+    if (upcoming.length === 0 && botContext.calendario && botContext.calendario.length > 0) {
+        upcoming = botContext.calendario.filter(e => e.fecha >= today).slice(0, 20);
+    }
+    const eventosStr = upcoming.map(e => `${e.fecha}${e.hora ? ' '+e.hora : ''} | ${e.descripcion} | hijo=${e.hijo}${e.lugar ? ' | lugar='+e.lugar : ''}`).join('\n');
     
     // Formatear compañeros como texto legible (con teléfono, dirección, apoderados)
     let companerosTxt = '';
@@ -212,6 +217,15 @@ async function botRespond(sock, groupId, question, userCfg) {
         }
     }
 
+    // Documentos PDF recibidos por WhatsApp (circulares, calendarios de pruebas)
+    let docsPdfTxt = '';
+    if (botContext.documentos_wa && botContext.documentos_wa.length > 0) {
+        docsPdfTxt = '\nDocumentos PDF recibidos por WhatsApp:';
+        for (const doc of botContext.documentos_wa.slice(0, 5)) {
+            docsPdfTxt += `\n  [${doc.fecha_recibido}] ${doc.filename} (grupo: ${doc.grupo}): ${doc.contenido.substring(0, 500)}`;
+        }
+    }
+
     // SC Info
     let scinfoTxt = '';
     if (botContext.scinfo && botContext.scinfo.contenido) {
@@ -283,6 +297,7 @@ ${conductaTxt}
 ${companerosTxt.substring(0, 2000)}
 ${waRecienteTxt}
 ${emailsTxt}
+${docsPdfTxt}
 ${scinfoTxt}
 ${pagosTxt}
 ${cobranzaTxt}
@@ -382,7 +397,7 @@ async function startSession(userCfg) {
             const entry = {
                 from: msg.pushName || 'desconocido',
                 time: new Date(ts * 1000).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }),
-                date: new Date(ts * 1000).toISOString().split('T')[0],
+                date: new Date(ts * 1000).toLocaleDateString('sv-SE', { timeZone: 'America/Santiago' }),
                 body: body,
                 timestamp: ts,
             };
@@ -496,14 +511,38 @@ async function startSession(userCfg) {
                 console.log(`[${userId}] LOGGED OUT - necesita re-vincular QR`);
                 return; // No reconectar si fue logout manual
             }
-            // Conflict (replaced) — esperar con backoff exponencial y NO crear nuevo socket
+            // Reconexión con backoff exponencial
             const retryCount = (sock._retryCount || 0) + 1;
             sock._retryCount = retryCount;
-            const baseDelay = Math.min(30000, 5000 * Math.pow(2, retryCount - 1)); // 5s, 10s, 20s, 30s max
+            
+            if (retryCount > 10) {
+                console.log(`[${userId}] Demasiados reintentos (${retryCount}), reiniciando proceso...`);
+                process.exit(1); // systemd lo reiniciará
+            }
+            
+            const baseDelay = Math.min(60000, 5000 * Math.pow(2, retryCount - 1)); // 5s, 10s, 20s, 40s, 60s max
             const jitter = Math.floor(Math.random() * 5000);
             const delay = baseDelay + jitter;
-            console.log(`[${userId}] Desconectado (code=${code}), retry #${retryCount} en ${Math.round(delay/1000)}s...`);
-            // No process.exit — simplemente esperar y Baileys reconecta internamente
+            console.log(`[${userId}] Desconectado (code=${code}), reconectando en ${Math.round(delay/1000)}s (intento #${retryCount})...`);
+            
+            setTimeout(async () => {
+                console.log(`[${userId}] Reconectando...`);
+                try {
+                    // Crear nuevo socket con las mismas credenciales
+                    const newSock = await startSession(userCfg);
+                    // Actualizar referencia en activeSessions
+                    if (global._activeSessions && newSock) {
+                        global._activeSessions[userId] = newSock;
+                    }
+                } catch (e) {
+                    console.log(`[${userId}] Error reconectando: ${e.message}`);
+                    // Si falla, process.exit para que systemd reinicie
+                    if (retryCount >= 5) {
+                        console.log(`[${userId}] Forzando restart del servicio`);
+                        process.exit(1);
+                    }
+                }
+            }, delay);
         }
     });
 

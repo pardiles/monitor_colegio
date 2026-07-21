@@ -59,6 +59,15 @@ class SchoolNetClient:
                 browser.close()
                 return False
 
+            # Cerrar modal "contraseña no segura" si aparece
+            try:
+                cancelar = page.locator("button, a").filter(has_text="Cancelar").first
+                if cancelar.is_visible(timeout=3000):
+                    cancelar.click()
+                    time.sleep(1)
+            except Exception:
+                pass
+
             # Extraer cookies
             self.cookies = {
                 c["name"]: c["value"]
@@ -70,6 +79,534 @@ class SchoolNetClient:
         # Crear sesión de requests
         self._init_session()
         return True
+
+    def login_and_fetch_extras(self) -> list:
+        """
+        Login + navegar a extracurriculares EN LA MISMA sesión de browser.
+        Esto evita que el SSO URL expire entre el login y el fetch.
+        
+        Returns:
+            Lista de dicts con actividades extraprogramáticas, o [] si falla.
+        """
+        import re
+        
+        extras = []
+        
+        with sync_playwright() as p:
+            # headless=False + xvfb evita detección de Cloudflare (fingerprint de Chrome real)
+            browser = p.chromium.launch(headless=False)
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+            page = context.new_page()
+
+            # 1. Login en SchoolNet
+            page.goto(self.LOGIN_URL, wait_until="networkidle")
+            page.fill("#signin_username", self.username)
+            page.fill("#signin_password", self.password)
+            page.click("#btn_login")
+
+            try:
+                page.wait_for_url("**/index**", timeout=15000)
+                time.sleep(3)  # Esperar a que la sesión se estabilice
+            except Exception:
+                browser.close()
+                return []
+
+            # Cerrar modal "contraseña no segura" si aparece
+            try:
+                cancelar = page.locator("button, a").filter(has_text="Cancelar").first
+                if cancelar.is_visible(timeout=3000):
+                    cancelar.click()
+                    time.sleep(1)
+            except Exception:
+                pass
+
+            # Extraer cookies para la sesión de requests
+            self.cookies = {
+                c["name"]: c["value"]
+                for c in context.cookies()
+                if "colegium" in c.get("domain", "")
+            }
+            
+            # 2. Obtener SSO URL via fetch en el browser (no via requests, así no consume el token)
+            self._init_session()
+            time.sleep(1)
+            
+            try:
+                sso_url = page.evaluate("""async () => {
+                    const resp = await fetch('/webapp/es_CL/extracurricularescondor/index', {
+                        credentials: 'include'
+                    });
+                    const data = await resp.json();
+                    return data.url || '';
+                }""")
+            except Exception:
+                sso_url = self.get_extracurriculares_url()
+            
+            if not sso_url:
+                browser.close()
+                return []
+            
+            print(f"   🔗 SSO URL: {sso_url[:80]}")
+            
+            # 3. Navegar al SSO URL y capturar responses de /datos
+            datos_responses = []
+            
+            def capture_datos(response):
+                if "/datos" in response.url and response.status == 200:
+                    try:
+                        body = response.text()
+                        if len(body) > 50:
+                            datos_responses.append(body)
+                    except Exception:
+                        pass
+            
+            page.on("response", capture_datos)
+            page.goto(sso_url, wait_until="networkidle", timeout=60000)
+            
+            # Esperar a que /datos se resuelva
+            for _ in range(15):
+                if datos_responses:
+                    break
+                time.sleep(2)
+            
+            print(f"   📍 Landed: {page.url[:60]}")
+            print(f"   📦 /datos: {len(datos_responses)} responses, {sum(len(r) for r in datos_responses)} total chars")
+            
+            # Verificar si la página cargó correctamente (no rate-limited)
+            page_text = page.evaluate("() => document.body.innerText || ''")
+            if "INTENTE MAS TARDE" in page_text.upper():
+                print("   ⚠️ Colegium rate-limited, abortando extras")
+                browser.close()
+                return []
+            
+            # Si capturamos /datos, parsear el JSON y hacer POSTs por alumno
+            if datos_responses:
+                import json as _json
+                print(f"   ✅ {len(datos_responses)} responses capturadas, parseando...")
+                
+                for resp_body in datos_responses:
+                    try:
+                        datos = _json.loads(resp_body)
+                        parsed = self._parse_datos_json(datos)
+                        if parsed:
+                            extras.extend(parsed)
+                    except Exception:
+                        pass
+                
+                # Si obtuvimos UUIDs de alumnos pero no actividades, hacer POST por cada uno
+                if not extras and hasattr(self, '_alumno_uuids') and self._alumno_uuids:
+                    print(f"   🔄 POST getUserApplications/inscritas para {len(self._alumno_uuids)} alumnos...")
+                    for alumno_info in self._alumno_uuids:
+                        uuid = alumno_info["uuid"]
+                        nombre = alumno_info["nombres"]
+                        try:
+                            # Disparar el POST clickeando el alumno en la UI
+                            # (el fetch directo es bloqueado por Cloudflare)
+                            page.evaluate("() => { document.querySelectorAll('[id*=bloquear]').forEach(el => el.remove()); }")
+                            
+                            # Click en el alumno por nombre
+                            clicked = page.evaluate(f"""() => {{
+                                const els = document.querySelectorAll('*');
+                                for (const el of els) {{
+                                    const t = (el.textContent || '').trim();
+                                    const alt = el.alt || '';
+                                    if (t === '{nombre}' || alt === '{nombre}') {{
+                                        el.click();
+                                        if (el.parentElement) el.parentElement.click();
+                                        return true;
+                                    }}
+                                }}
+                                return false;
+                            }}""")
+                            
+                            if clicked:
+                                time.sleep(5)
+                                page.evaluate("() => { document.querySelectorAll('[id*=bloquear]').forEach(el => el.remove()); }")
+                                
+                                # Click en Inscritas
+                                page.evaluate("""() => {
+                                    const links = document.querySelectorAll('a[href*=tabInscritas]');
+                                    if (links.length) links[0].click();
+                                }""")
+                                time.sleep(5)
+                            
+                            # Ahora capturar lo que la página cargó via las responses interceptadas
+                            # Las responses del POST se capturan en datos_responses
+                            new_responses = [r for r in datos_responses if '"inscritas"' in r]
+                            for resp_body in new_responses:
+                                try:
+                                    act_data = _json.loads(resp_body)
+                                    parsed = self._parse_datos_json(act_data)
+                                    for e in parsed:
+                                        e["hijo"] = nombre.title()
+                                    extras.extend(parsed)
+                                    print(f"   ✅ {nombre}: {len(parsed)} actividades")
+                                except Exception:
+                                    pass
+                            
+                            if not new_responses:
+                                # Fallback: leer innerText de la página
+                                text = page.evaluate("() => document.body.innerText")
+                                horario_pat = re.compile(r'(LUN|MAR|MI[EÉ]|JUE|VIE)\s+(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})', re.IGNORECASE)
+                                for m in horario_pat.finditer(text):
+                                    extras.append({
+                                        "nombre": "Actividad",  # No podemos saber el nombre sin más contexto
+                                        "dia": m.group(1)[:3].upper(),
+                                        "horario": f"{m.group(2)}-{m.group(3)}",
+                                        "hijo": nombre.title(),
+                                        "hora_salida_real": m.group(3),
+                                    })
+                                if extras:
+                                    print(f"   ✅ {nombre}: {len([e for e in extras if e['hijo'] == nombre.title()])} actividades (from DOM)")
+                            
+                            time.sleep(2)
+                        except Exception as e:
+                            print(f"   ⚠️ {nombre}: {e}")
+                
+                if extras:
+                    browser.close()
+                    return extras
+            
+            # Esperar a que carguen los nombres de alumnos (puede demorar 10-20s)
+            try:
+                page.wait_for_function(
+                    """() => {
+                        const els = document.querySelectorAll('a, span, div, img');
+                        for (const el of els) {
+                            const t = (el.textContent || el.alt || '').trim();
+                            if (t && t === t.toUpperCase() && t.length > 4 && t.length < 25 
+                                && t.includes(' ') && !t.includes('ACTIVIDAD') 
+                                && !t.includes('EXTRAPROGRAMÁT') && !t.includes('INTENTE')
+                                && !t.includes('PRIORIDAD') && !t.includes('POSTULAR')) {
+                                return true;
+                            }
+                        }
+                        return false;
+                    }""",
+                    timeout=30000
+                )
+                time.sleep(2)
+            except Exception:
+                print("   ⚠️ Timeout esperando nombres de alumnos, continuando de todos modos...")
+            
+            # 4. Detectar alumnos en la página
+            try:
+                alumno_names = page.evaluate("""() => {
+                    const names = [];
+                    const exclude = ['ACTIVIDAD', 'EXTRAPROGRAMÁT', 'DEPORTE', 'INTENTE',
+                        'RESUMEN', 'INSCRIT', 'ABIERT', 'ESPERA', 'FINALIZ', 'RECHAZ',
+                        'POSTULAR', 'ELIMINAR', 'CAMBIAR', 'AGREGAR', 'PAGAD', 'PAGO',
+                        'PRIORIDAD', 'DEFINIR', 'PENDIENTE', 'SELECCIONE', 'DESTINO',
+                        'ALUMNO', 'CERRAR', 'SESIÓN', 'INICIO', 'CORAZÓN', 'COLEGIO'];
+                    document.querySelectorAll('a, span, div, li, img').forEach(el => {
+                        const text = el.textContent ? el.textContent.trim() : (el.alt || '');
+                        if (text && text === text.toUpperCase() && text.length > 4 && text.length < 25 
+                            && text.includes(' ')
+                            && !exclude.some(ex => text.includes(ex))) {
+                            if (!names.includes(text)) names.push(text);
+                        }
+                    });
+                    return names;
+                }""")
+            except Exception:
+                alumno_names = []
+            
+            print(f"   👧 Alumnos: {alumno_names}")
+            
+            # Interceptar respuestas AJAX que contienen datos de actividades
+            ajax_responses = []
+            
+            def handle_response(response):
+                """Capturar respuestas JSON que contengan datos de actividades."""
+                try:
+                    if response.status == 200 and "application/json" in (response.headers.get("content-type") or ""):
+                        body = response.text()
+                        if body and len(body) > 50 and ("horario" in body.lower() or "inscrit" in body.lower() or "pagad" in body.lower()):
+                            ajax_responses.append(body)
+                except Exception:
+                    pass
+            
+            page.on("response", handle_response)
+            
+            for alumno in alumno_names if alumno_names else [""]:
+                # Remover overlay bloqueante de Colegium (bloquearTodo-1)
+                page.evaluate("""() => {
+                    document.querySelectorAll('[id*=bloquear], .loading-overlay, .modal-backdrop').forEach(el => {
+                        el.style.display = 'none';
+                        el.style.pointerEvents = 'none';
+                    });
+                }""")
+                
+                # Click en alumno
+                if alumno:
+                    try:
+                        link = page.locator(f"text={alumno}").first
+                        if link.is_visible():
+                            link.click(force=True)
+                            time.sleep(5)
+                            # Remover overlay de nuevo (puede reaparecer después del click)
+                            page.evaluate("""() => {
+                                document.querySelectorAll('[id*=bloquear], .loading-overlay, .modal-backdrop').forEach(el => {
+                                    el.style.display = 'none';
+                                    el.style.pointerEvents = 'none';
+                                });
+                            }""")
+                    except Exception:
+                        pass
+                
+                # Click en "Inscritas"
+                try:
+                    # Remover overlay
+                    page.evaluate("() => { document.querySelectorAll('[id*=bloquear]').forEach(el => el.remove()); }")
+                    time.sleep(1)
+                    tab = page.locator("a").filter(has_text="Inscritas").first
+                    if tab.is_visible():
+                        tab.click(force=True)
+                        time.sleep(5)
+                        # Remover overlay post-click
+                        page.evaluate("() => { document.querySelectorAll('[id*=bloquear]').forEach(el => el.remove()); }")
+                except Exception:
+                    pass
+                
+                # Esperar a que cargue contenido dinámico
+                try:
+                    page.wait_for_function(
+                        """() => document.body.innerText.match(/\\d{1,2}:\\d{2}\\s*[-–]\\s*\\d{1,2}:\\d{2}/)""",
+                        timeout=20000
+                    )
+                    time.sleep(2)
+                except Exception:
+                    # Intentar click en "Pagadas" sub-tab
+                    try:
+                        pagadas = page.locator("a, span, h5, h4").filter(has_text="Pagadas").first
+                        if pagadas.is_visible():
+                            pagadas.click()
+                            time.sleep(5)
+                            try:
+                                page.wait_for_function(
+                                    """() => document.body.innerText.match(/\\d{1,2}:\\d{2}\\s*[-–]\\s*\\d{1,2}:\\d{2}/)""",
+                                    timeout=15000
+                                )
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                
+                # Extraer texto completo de la página (innerText de todo el body)
+                try:
+                    full_text = page.evaluate("() => document.body.innerText")
+                except Exception:
+                    full_text = ""
+                
+                # Parsear actividades del texto
+                lines = [l.strip() for l in full_text.split('\n') if l.strip()]
+                
+                horario_pattern = re.compile(r'(LUN|MAR|MI[EÉ]|JUE|VIE|S[AÁ]B|DOM)\s+(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})', re.IGNORECASE)
+                horario_only = re.compile(r'(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})')
+                dia_pattern = re.compile(r'\b(LUN|MAR|MI[EÉ]|JUE|VIE)\b', re.IGNORECASE)
+                
+                for i, line in enumerate(lines):
+                    # Primero intentar patrón completo "DIA HH:MM-HH:MM"
+                    match = horario_pattern.search(line)
+                    if match:
+                        dia = match.group(1)[:3].upper()
+                        horario = f"{match.group(2)}-{match.group(3)}"
+                        hora_fin = match.group(3)
+                    else:
+                        # Patrón solo horario
+                        match2 = horario_only.search(line)
+                        if not match2:
+                            continue
+                        horario = f"{match2.group(1)}-{match2.group(2)}"
+                        hora_fin = match2.group(2)
+                        # Buscar día en la misma línea o adyacentes
+                        dia_m = dia_pattern.search(line)
+                        if dia_m:
+                            dia = dia_m.group(1)[:3].upper()
+                        else:
+                            dia = ""
+                            for j in range(max(0, i-2), min(len(lines), i+2)):
+                                dm = dia_pattern.search(lines[j])
+                                if dm:
+                                    dia = dm.group(1)[:3].upper()
+                                    break
+                        if not dia:
+                            continue
+                    
+                    # Normalizar día
+                    dia_map = {"MIÉ": "MIE", "SÁB": "SAB"}
+                    dia = dia_map.get(dia, dia)
+                    
+                    # Buscar nombre de la actividad (arriba en las líneas)
+                    nombre = ""
+                    for j in range(i - 1, max(0, i - 15), -1):
+                        prev = lines[j]
+                        if len(prev) > 4 and len(prev) < 80 and \
+                           not prev.startswith("Fecha") and \
+                           not prev.startswith("Profesor") and not prev.startswith("Costo") and \
+                           not prev.startswith("Horario") and not prev.startswith("Inicio") and \
+                           "inscripción" not in prev.lower() and \
+                           not re.match(r'^[\d/$.\s]+$', prev) and \
+                           not re.match(r'^\d{1,2}/\d{1,2}/\d{4}$', prev) and \
+                           "Sin profesor" not in prev and "Sin Costo" not in prev and \
+                           "CLP" not in prev and \
+                           prev not in ("Pagadas", "Pendientes de pago", "Horario:", "Horario"):
+                            nombre = prev
+                            break
+                    
+                    if nombre:
+                        extras.append({
+                            "nombre": nombre,
+                            "dia": dia,
+                            "horario": horario,
+                            "hijo": alumno.title() if alumno else "",
+                            "hora_salida_real": hora_fin,
+                        })
+                
+                print(f"   📊 {alumno}: {len([e for e in extras if e.get('hijo','').upper() == alumno])} actividades")
+            
+            # Si no encontramos nada via DOM, intentar parsear respuestas AJAX capturadas
+            if not extras and ajax_responses:
+                print(f"   🔄 Intentando parsear {len(ajax_responses)} respuestas AJAX...")
+                import json as _json
+                for resp_text in ajax_responses:
+                    try:
+                        data = _json.loads(resp_text)
+                        if isinstance(data, list):
+                            for item in data:
+                                if isinstance(item, dict) and (item.get("horario") or item.get("schedule")):
+                                    extras.append({
+                                        "nombre": item.get("nombre", item.get("name", "")),
+                                        "dia": item.get("dia", ""),
+                                        "horario": item.get("horario", item.get("schedule", "")),
+                                        "hijo": "",
+                                        "hora_salida_real": "",
+                                    })
+                    except Exception:
+                        pass
+            
+            browser.close()
+        
+        return extras
+
+    def _parse_datos_json(self, datos) -> list:
+        """Parsear el JSON de /datos de extracurriculares.colegium.com.
+        
+        El GET /datos devuelve {error: false, result: [{uuid_usuario, nombres, ...}]}
+        Después hay que hacer POST /datos con funcion=getUserApplications/inscritas
+        para cada alumno para obtener sus actividades.
+        
+        Pero si datos ya viene con las actividades (capturado del POST), parsear directo.
+        """
+        import re
+        extras = []
+        
+        if not datos or not isinstance(datos, dict):
+            return []
+        
+        # Caso 1: Response del POST getUserApplications/inscritas
+        # Estructura: {inscritas: [{nombre, martes, ma_hora_ini, ma_hora_fin, ...}]}
+        if "inscritas" in datos and isinstance(datos["inscritas"], list):
+            for act in datos["inscritas"]:
+                if not isinstance(act, dict):
+                    continue
+                nombre = act.get("nombre", "")
+                if not nombre:
+                    continue
+                
+                # Mapeo de días: campo booleano + hora_ini + hora_fin
+                dias = [
+                    ("LUN", "lunes", "lu_hora_ini", "lu_hora_fin"),
+                    ("MAR", "martes", "ma_hora_ini", "ma_hora_fin"),
+                    ("MIE", "miercoles", "mi_hora_ini", "mi_hora_fin"),
+                    ("JUE", "jueves", "ju_hora_ini", "ju_hora_fin"),
+                    ("VIE", "viernes", "vi_hora_ini", "vi_hora_fin"),
+                    ("SAB", "sabado", "sa_hora_ini", "sa_hora_fin"),
+                ]
+                
+                for dia_code, dia_bool, hora_ini_key, hora_fin_key in dias:
+                    if act.get(dia_bool) and act.get(hora_ini_key) and act.get(hora_fin_key):
+                        hora_ini = act[hora_ini_key][:5]  # "16:15:00" → "16:15"
+                        hora_fin = act[hora_fin_key][:5]
+                        extras.append({
+                            "nombre": nombre,
+                            "dia": dia_code,
+                            "horario": f"{hora_ini}-{hora_fin}",
+                            "hijo": "",  # Se asigna después
+                            "hora_salida_real": hora_fin,
+                        })
+            return extras
+        
+        # Caso 2: Response del GET /datos inicial
+        # Estructura: {error: false, result: [{uuid_usuario, nombres, ...}]}
+        alumnos_data = datos.get("result", [])
+        if not isinstance(alumnos_data, list):
+            return []
+        
+        # Guardar UUIDs para hacer POST después
+        self._alumno_uuids = []
+        for alumno in alumnos_data:
+            if isinstance(alumno, dict) and alumno.get("uuid_usuario"):
+                self._alumno_uuids.append({
+                    "uuid": alumno["uuid_usuario"],
+                    "nombres": alumno.get("nombres", ""),
+                })
+        
+        return extras  # Vacío — las actividades se obtienen via POST separado
+    
+    def _extract_activity(self, act, alumno_name: str, extras: list):
+        """Extraer datos de una actividad del JSON."""
+        import re
+        if not isinstance(act, dict):
+            return
+        
+        nombre = act.get('nombre', act.get('name', act.get('actividad', '')))
+        horario_raw = act.get('horario', act.get('schedule', act.get('hora', '')))
+        estado = act.get('estado', act.get('status', '')).lower() if act.get('estado') or act.get('status') else 'pagada'
+        
+        # Solo actividades pagadas/sin costo
+        if estado and estado not in ('pagada', 'sin costo', 'inscrita', 'activa', ''):
+            return
+        
+        if not nombre:
+            return
+        
+        # Parsear horario - puede ser "LUN 16:15-17:45" o separado
+        dia_pattern = re.compile(r'(LUN|MAR|MI[EÉ]|JUE|VIE|S[AÁ]B|DOM)', re.IGNORECASE)
+        time_pattern = re.compile(r'(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})')
+        
+        if horario_raw:
+            # Puede tener múltiples horarios separados por espacio/coma
+            entries = re.split(r'[,;]|\s{3,}', str(horario_raw))
+            for entry in entries:
+                entry = entry.strip()
+                dia_m = dia_pattern.search(entry)
+                time_m = time_pattern.search(entry)
+                if dia_m and time_m:
+                    dia = dia_m.group(1)[:3].upper()
+                    horario = f"{time_m.group(1)}-{time_m.group(2)}"
+                    extras.append({
+                        "nombre": nombre,
+                        "dia": dia,
+                        "horario": horario,
+                        "hijo": alumno_name.title() if alumno_name else "",
+                        "hora_salida_real": time_m.group(2),
+                    })
+        else:
+            # Buscar dia y horario en campos separados
+            dia = act.get('dia', act.get('day', ''))
+            hora_inicio = act.get('hora_inicio', act.get('start_time', ''))
+            hora_fin = act.get('hora_fin', act.get('end_time', ''))
+            if dia and hora_inicio and hora_fin:
+                extras.append({
+                    "nombre": nombre,
+                    "dia": dia[:3].upper(),
+                    "horario": f"{hora_inicio}-{hora_fin}",
+                    "hijo": alumno_name.title() if alumno_name else "",
+                    "hora_salida_real": hora_fin,
+                })
 
     def _init_session(self):
         """Inicializar sesión de requests con las cookies."""

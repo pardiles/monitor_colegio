@@ -28,6 +28,7 @@ from src.sources.noticias_web import fetch_noticias
 from src.sources.extracurriculares import fetch_extracurriculares
 from src.sources.scinfo import fetch_scinfo_latest
 from src.sources.cuadernorojo import fetch_cuadernorojo
+from src.sources.wa_pdf_processor import get_pdf_summary_for_context
 from src.sources.oxford import fetch_oxford_all
 from src.processor.summarizer import Summarizer
 from src.calendar_store import update_calendar_from_sources, get_upcoming_events
@@ -550,8 +551,19 @@ def ingest_for_user(user_cfg: dict) -> dict:
         if cal_url:
             try:
                 categorias = [h.get("categoria_calendario", "") for h in user_cfg.get("hijos", []) if h.get("categoria_calendario")]
+                # Fallback: inferir categoría del curso (ej: "5-A" → "5", "1-C" → "1", "1EM" → "1EM")
+                if not categorias:
+                    for h in user_cfg.get("hijos", []):
+                        curso = h.get("curso", "")
+                        if curso:
+                            # Extraer número/nivel del curso
+                            import re as _re
+                            m = _re.match(r'^(\d+)', curso)
+                            if m:
+                                categorias.append(m.group(1))
                 if categorias:
                     data["calendario"] = fetch_evaluaciones(categorias)
+                    print(f"   ✅ Calendario evaluaciones: {len(data['calendario'])} eventos (categorías: {categorias})")
             except Exception as e:
                 print(f"   ⚠️ Calendario: {e}")
 
@@ -619,13 +631,31 @@ def ingest_for_user(user_cfg: dict) -> dict:
                     SCHOOL_DOMAINS.extend(original)
                 except Exception as e:
                     print(f"   ⚠️ Gmail: {e}")
-    elif isinstance(gmail_cfg, dict):
-        # Single account (Pablo, Kevin)
+    elif isinstance(gmail_cfg, dict) and (gmail_cfg.get("credentials_file") or gmail_cfg.get("token_file")):
+        # Single account con config explícita
         creds_file = gmail_cfg.get("credentials_file", "credentials.json")
         token_file = gmail_cfg.get("token_file", "token.json")
-        if os.path.exists(creds_file) and os.path.exists(token_file):
+        # Fallback: token sincronizado de S3 (generado por landing OAuth)
+        if not os.path.exists(token_file):
+            s3_token = os.path.join("config", "tokens", f"{user_id}_gmail_token.json")
+            if os.path.exists(s3_token):
+                token_file = s3_token
+                creds_file = ""  # No se necesita, el token S3 tiene client_id/secret embebido
+                print(f"   📧 Usando token Gmail de landing (S3)")
+        if os.path.exists(token_file):
             try:
                 gmail = GmailClient(creds_file, token_file)
+                gmail.authenticate()
+                data["emails"] = gmail.get_school_emails(days=7)
+            except Exception as e:
+                print(f"   ⚠️ Gmail: {e}")
+    else:
+        # Fallback universal: buscar token de S3 aunque no haya config de Gmail
+        s3_token = os.path.join("config", "tokens", f"{user_id}_gmail_token.json")
+        if os.path.exists(s3_token):
+            print(f"   📧 Usando token Gmail de landing (S3)")
+            try:
+                gmail = GmailClient("", s3_token)
                 gmail.authenticate()
                 data["emails"] = gmail.get_school_emails(days=7)
             except Exception as e:
@@ -637,9 +667,27 @@ def ingest_for_user(user_cfg: dict) -> dict:
     if os.path.exists(wa_file):
         with open(wa_file, "r", encoding="utf-8") as f:
             all_wa = json.load(f)
-        for group_id, label in wa_cfg.get("grupos_lectura", {}).items():
-            if label in all_wa:
-                data[f"whatsapp_{label}"] = all_wa[label]
+        
+        # Método 1: grupos_lectura (mapeo explícito group_id → label)
+        grupos_lectura = wa_cfg.get("grupos_lectura", {})
+        if grupos_lectura:
+            for group_id, label in grupos_lectura.items():
+                if label in all_wa:
+                    data[f"whatsapp_{label}"] = all_wa[label]
+        else:
+            # Método 2: usar whatsapp_groups de la landing (tiene id, name, hijo)
+            # El wa_listener guarda con labels derivadas del nombre del grupo
+            wa_groups = user_cfg.get("whatsapp_groups", [])
+            if wa_groups:
+                # Mapear: buscar labels en all_wa que coincidan con los grupos configurados
+                for label, msgs in all_wa.items():
+                    if msgs:
+                        data[f"whatsapp_{label}"] = msgs
+            else:
+                # Fallback: cargar TODOS los mensajes disponibles (usuario con config legacy)
+                for label, msgs in all_wa.items():
+                    if msgs:
+                        data[f"whatsapp_{label}"] = msgs
 
     # Monitor inputs (instrucciones de los padres)
     monitor_file = os.path.join("data", f"monitor_inputs_{user_id}.json")
@@ -841,6 +889,29 @@ def ingest_for_user(user_cfg: dict) -> dict:
                 tal_content = web["talleres"].get("contenido_html", "")
                 pdfs_content = " ".join([p.get("contenido", "") for p in web["talleres"].get("pdfs", [])])
                 bot_context["talleres"] = (tal_content + " " + pdfs_content)[:1500]
+
+        # Calendario persistente (eventos próximos: pruebas, reuniones, actividades)
+        if data.get("calendario_persistente"):
+            bot_context["calendario"] = [
+                {
+                    "fecha": e.get("fecha", ""),
+                    "hora": e.get("hora", ""),
+                    "descripcion": e.get("descripcion", ""),
+                    "tipo": e.get("tipo", ""),
+                    "hijo": e.get("hijo", ""),
+                    "lugar": e.get("lugar", ""),
+                }
+                for e in data["calendario_persistente"][:30]
+            ]
+
+        # PDFs recibidos por WhatsApp (circulares, calendarios de pruebas, etc.)
+        try:
+            wa_pdfs = get_pdf_summary_for_context(user_id)
+            if wa_pdfs:
+                bot_context["documentos_wa"] = wa_pdfs
+                print(f"   ✅ PDFs WA: {len(wa_pdfs)} documentos procesados")
+        except Exception as e:
+            print(f"   ⚠️ PDFs WA: {e}")
 
         bot_context_file = os.path.join("data", f"bot_context_{user_id}.json")
         with open(bot_context_file, "w", encoding="utf-8") as f:

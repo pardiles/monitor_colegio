@@ -89,6 +89,34 @@ def add_event(
     return True
 
 
+def add_events_to_calendar(events: List[Dict], user_id: Optional[str] = None) -> int:
+    """
+    Agrega múltiples eventos al calendario.
+    
+    Args:
+        events: Lista de dicts con al menos {fecha, descripcion}
+        user_id: ID del usuario
+    
+    Returns:
+        Cantidad de eventos nuevos agregados
+    """
+    added = 0
+    for ev in events:
+        result = add_event(
+            fecha=ev.get("fecha", ""),
+            descripcion=ev.get("descripcion", ""),
+            tipo=ev.get("tipo", "evento"),
+            hijo=ev.get("hijo", "ambos"),
+            fuente=ev.get("fuente", "ai_extraction"),
+            hora=ev.get("hora"),
+            lugar=ev.get("lugar"),
+            user_id=user_id,
+        )
+        if result:
+            added += 1
+    return added
+
+
 def get_upcoming_events(days: int = 14, user_id: Optional[str] = None) -> List[Dict]:
     """Obtiene eventos de los próximos N días."""
     calendario = load_calendar(user_id)
@@ -112,7 +140,7 @@ def cleanup_past_events(user_id: Optional[str] = None):
     calendario = load_calendar(user_id)
     yesterday = (datetime.now(CHILE_TZ) - timedelta(days=1)).strftime("%Y-%m-%d")
     
-    filtered = [ev for ev in calendario if ev["fecha"] >= yesterday]
+    filtered = [ev for ev in calendario if ev.get("fecha") and ev["fecha"] >= yesterday]
     if len(filtered) < len(calendario):
         save_calendar(filtered, user_id)
 
@@ -378,9 +406,9 @@ def update_calendar_from_sources(data: Dict, user_id: Optional[str] = None) -> i
                 nivel_to_hijo[nivel] = h.get("nombre", "").lower()
 
         for ev in data["calendario"]:
-            fecha = ev.get("start", "")[:10]
-            desc = ev.get("title", "") + " - " + ev.get("description", "")
-            if fecha and desc:
+            fecha = (ev.get("start") or "")[:10]
+            desc = (ev.get("title") or "") + " - " + (ev.get("description") or "")
+            if fecha and desc.strip(" -"):
                 # Asignar hijo por categoría del evento (nivel del curso)
                 hijo = "ambos"
                 cat = str(ev.get("category", ""))

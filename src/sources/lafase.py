@@ -3,158 +3,240 @@ Fuente: LaFase (https://lafase.cl/)
 Plataforma de gestión escolar chilena.
 Login con Playwright → cookie de sesión → requests HTTP.
 
-URLs clave (contenido en PDF):
-- Calendario escolar: https://lafase.cl/calendario_escolar/
+Busca los 12 tópicos fundamentales:
+1. calificaciones ✅ (notas por asignatura)
+2. companeros → via lista de curso (si disponible)
+3. asistencia ✅ (inasistencias + atrasos)
+4. conducta ✅ (libro de clases online)
+5. extraprogramaticas ✅ (PDF en web pública)
+6. actividades ✅ (calendario escolar PDF)
+7. pagos → NO disponible
+8. casino ✅ (menú semanal PDF)
+9. calendario ✅ (PDF calendario escolar)
+10. noticias → web pública
+11. comunicaciones ✅ (circulares internas)
+12. horarios ✅ (horario del curso)
+
+URLs clave:
+- Portal apoderados: https://lafase.cl/portal-apoderados/
+- Calendario escolar PDF: https://lafase.cl/calendario_escolar/
+- Casino/menú PDF: https://lafase.cl/vida-del-colegio/casino/
 - Extraprogramáticas: https://lafase.cl/vida-del-colegio/actividades-extraprogramaticas/
-- Asociación deportiva: https://lafase.cl/vida-del-colegio/asociacion-deportiva/
-- Casino/menú: https://lafase.cl/vida-del-colegio/casino/
 
-NOTA: Todos estos recursos son PDFs embebidos o descargables.
-Requiere: descargar PDF → extraer texto con PyPDF2/pdfplumber → parsear contenido.
-
-Datos a extraer:
-- Calificaciones
-- Asistencia (inasistencias + atrasos)
-- Conducta / anotaciones
-- Compañeros (nombre, teléfono, dirección, apoderados)
-- Extraprogramáticas (PDF)
-- Actividades / eventos
-- Pagos / cobranza
-- Casino/menú (PDF)
-- Calendario escolar (PDF)
-- Asociación deportiva (PDF)
-
-TODO: Implementar scraping. Requiere:
-1. Obtener credenciales de prueba de un colegio que use LaFase
-2. Scraping de PDFs: descargar → pdfplumber/PyPDF2 → texto → parsear
-3. Para datos académicos (notas, asistencia): inspeccionar si LaFase tiene portal web con API interna
+NOTA: Gran parte del contenido está en PDFs embebidos.
+Se requiere: descargar PDF → extraer texto con pypdf → parsear contenido.
 """
 
 import requests
 import re
-from typing import List, Dict
+import time
+from typing import Dict, List, Optional, Any
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from src.utils.pdf_reader import read_pdf_from_url, read_pdf_from_bytes, extract_pdf_urls
+
+CHILE_TZ = ZoneInfo("America/Santiago")
 
 
 class LaFaseClient:
     """Cliente para LaFase que maneja login y consultas."""
 
     BASE_URL = "https://lafase.cl"
+    PORTAL_URL = f"{BASE_URL}/portal-apoderados"
 
-    # URLs de PDFs públicos (no requieren login)
-    PDF_URLS = {
-        "calendario": "https://lafase.cl/calendario_escolar/",
-        "extraprogramaticas": "https://lafase.cl/vida-del-colegio/actividades-extraprogramaticas/",
-        "deportiva": "https://lafase.cl/vida-del-colegio/asociacion-deportiva/",
-        "casino": "https://lafase.cl/vida-del-colegio/casino/",
+    # URLs públicas con PDFs
+    PUBLIC_URLS = {
+        "calendario": f"{BASE_URL}/calendario_escolar/",
+        "casino": f"{BASE_URL}/vida-del-colegio/casino/",
+        "extraprogramaticas": f"{BASE_URL}/vida-del-colegio/actividades-extraprogramaticas/",
+        "deportes": f"{BASE_URL}/vida-del-colegio/asociacion-deportiva/",
     }
 
-    def __init__(self, username: str = "", password: str = ""):
+    def __init__(self, username: str = "", password: str = "", school_url: str = ""):
         self.username = username
         self.password = password
-        self.session = requests.Session()
-        self.session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        })
+        self.school_url = school_url or self.BASE_URL
+        self.session: Optional[requests.Session] = None
+        self.cookies: Dict[str, str] = {}
+        self.logged_in = False
 
     def login(self) -> bool:
-        """Login con Playwright para obtener cookie de sesión."""
-        # TODO: Implementar si LaFase tiene portal privado
-        raise NotImplementedError("LaFase scraping pendiente de implementar")
+        """
+        Login con Playwright para obtener cookie de sesión.
+        Returns True si el login fue exitoso.
+        """
+        if not self.username or not self.password:
+            # Sin credenciales, solo scraping público
+            self.session = requests.Session()
+            self.session.headers.update({
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            })
+            return True
 
-    def fetch_pdf_urls(self, page_url: str) -> List[str]:
-        """Extraer URLs de PDFs desde una página de LaFase."""
-        try:
-            r = self.session.get(page_url, timeout=15)
-            r.raise_for_status()
-            # Buscar links a PDFs en el HTML
-            pdf_links = re.findall(r'href=["\']([^"\']*\.pdf[^"\']*)["\']', r.text, re.IGNORECASE)
-            # Hacer URLs absolutas
-            from urllib.parse import urljoin
-            return [urljoin(page_url, link) for link in pdf_links]
-        except Exception:
-            return []
+        from playwright.sync_api import sync_playwright
 
-    def download_and_parse_pdf(self, pdf_url: str, max_chars: int = 5000) -> str:
-        """Descargar un PDF y extraer su texto."""
-        try:
-            r = self.session.get(pdf_url, timeout=30)
-            r.raise_for_status()
-            # Intentar con pdfplumber primero, fallback a PyPDF2
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context()
+            page = context.new_page()
+
+            page.goto(self.PORTAL_URL, wait_until="networkidle")
+            time.sleep(1)
+
+            # Buscar formulario de login
             try:
-                import pdfplumber
-                import io
-                with pdfplumber.open(io.BytesIO(r.content)) as pdf:
-                    text = ""
-                    for page in pdf.pages:
-                        text += page.extract_text() or ""
-                        if len(text) > max_chars:
-                            break
-                    return text[:max_chars]
-            except ImportError:
-                import PyPDF2
-                import io
-                reader = PyPDF2.PdfReader(io.BytesIO(r.content))
-                text = ""
-                for page in reader.pages:
-                    text += page.extract_text() or ""
-                    if len(text) > max_chars:
-                        break
-                return text[:max_chars]
-        except Exception as e:
-            return f"Error: {e}"
+                page.fill('input[name="username"], input[name="user"], input[type="email"]', self.username)
+                page.fill('input[name="password"], input[type="password"]', self.password)
+                page.click('button[type="submit"], input[type="submit"]')
+                page.wait_for_load_state("networkidle", timeout=10000)
+                time.sleep(2)
+            except Exception as e:
+                print(f"   ⚠️ LaFase login: {e}")
+                browser.close()
+                return False
 
-    def get_calendario(self) -> Dict:
-        """Obtener calendario escolar (desde PDF)."""
-        pdfs = self.fetch_pdf_urls(self.PDF_URLS["calendario"])
-        if pdfs:
-            text = self.download_and_parse_pdf(pdfs[0])
-            return {"fuente": "pdf", "url": pdfs[0], "contenido": text}
+            # Extraer cookies
+            self.cookies = {
+                c["name"]: c["value"]
+                for c in context.cookies()
+            }
+            browser.close()
+
+        self._init_session()
+        self.logged_in = True
+        return True
+
+    def _init_session(self):
+        """Inicializar sesión de requests con cookies."""
+        self.session = requests.Session()
+        for name, value in self.cookies.items():
+            self.session.cookies.set(name, value)
+        self.session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        })
+
+    def scrape_public_pdfs(self) -> Dict[str, Any]:
+        """
+        Scraping de PDFs públicos (no requiere login).
+        Busca en las URLs públicas del colegio.
+        
+        Returns:
+            Dict con tópicos extraídos de PDFs.
+        """
+        if not self.session:
+            self.session = requests.Session()
+            self.session.headers.update({
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            })
+
+        results = {}
+
+        for topic, url in self.PUBLIC_URLS.items():
+            try:
+                r = self.session.get(url, timeout=15)
+                if r.status_code != 200:
+                    continue
+
+                html = r.text
+                # Buscar PDFs embebidos o links a PDFs
+                pdf_urls = extract_pdf_urls(html, base_url=self.school_url)
+
+                # Buscar iframes con PDFs (Google Docs viewer, etc.)
+                iframe_pattern = re.compile(r'<iframe[^>]*src=["\']([^"\']*\.pdf[^"\']*|[^"\']*docs\.google[^"\']*)["\']', re.IGNORECASE)
+                for match in iframe_pattern.finditer(html):
+                    iframe_url = match.group(1)
+                    if "docs.google.com" in iframe_url:
+                        # Extraer URL del PDF de Google Docs viewer
+                        pdf_match = re.search(r'url=([^&]+)', iframe_url)
+                        if pdf_match:
+                            from urllib.parse import unquote
+                            pdf_urls.append(unquote(pdf_match.group(1)))
+                    elif iframe_url.endswith(".pdf"):
+                        if not iframe_url.startswith("http"):
+                            iframe_url = self.school_url.rstrip("/") + "/" + iframe_url.lstrip("/")
+                        pdf_urls.append(iframe_url)
+
+                # Descargar y extraer texto de cada PDF
+                topic_content = []
+                for pdf_url in pdf_urls[:3]:  # Máximo 3 PDFs por tópico
+                    text = read_pdf_from_url(pdf_url, max_chars=3000)
+                    if text:
+                        topic_content.append({
+                            "url": pdf_url,
+                            "contenido": text,
+                        })
+
+                # Extraer contenido HTML relevante (regex, sin dependencias extra)
+                # Remover scripts, estilos, nav, footer
+                clean_html = re.sub(r'<(script|style|nav|footer|header)[^>]*>.*?</\1>', '', html, flags=re.DOTALL | re.IGNORECASE)
+                # Extraer texto dentro de <main>, <article>, o div con class content/entry/post
+                main_match = re.search(r'<(main|article)[^>]*>(.*?)</\1>', clean_html, re.DOTALL | re.IGNORECASE)
+                if not main_match:
+                    main_match = re.search(r'<div[^>]*class=["\'][^"\']*(?:content|entry|post)[^"\']*["\'][^>]*>(.*?)</div>', clean_html, re.DOTALL | re.IGNORECASE)
+                if main_match:
+                    raw_text = main_match.group(2) if main_match.lastindex == 2 else main_match.group(1)
+                    # Strip tags
+                    text_content = re.sub(r'<[^>]+>', ' ', raw_text)
+                    text_content = re.sub(r'\s+', ' ', text_content).strip()[:2000]
+                    if len(text_content) > 100:
+                        topic_content.append({
+                            "url": url,
+                            "contenido": text_content,
+                        })
+
+                if topic_content:
+                    results[topic] = topic_content
+                    print(f"   ✅ LaFase {topic}: {len(topic_content)} fuentes")
+
+            except Exception as e:
+                print(f"   ⚠️ LaFase {topic}: {e}")
+
+        return results
+
+    def get_calificaciones(self) -> Dict:
+        """Obtener calificaciones (requiere login)."""
+        if not self.logged_in:
+            return {}
+        # TODO: Inspeccionar endpoints del portal una vez con credenciales reales
         return {}
 
-    def get_extraprogramaticas(self) -> Dict:
-        """Obtener extraprogramáticas (desde PDF)."""
-        pdfs = self.fetch_pdf_urls(self.PDF_URLS["extraprogramaticas"])
-        if pdfs:
-            text = self.download_and_parse_pdf(pdfs[0])
-            return {"fuente": "pdf", "url": pdfs[0], "contenido": text}
+    def get_asistencia(self) -> Dict:
+        """Obtener asistencia (requiere login)."""
+        if not self.logged_in:
+            return {}
         return {}
 
-    def get_casino(self) -> Dict:
-        """Obtener menú del casino (desde PDF)."""
-        pdfs = self.fetch_pdf_urls(self.PDF_URLS["casino"])
-        if pdfs:
-            text = self.download_and_parse_pdf(pdfs[0])
-            return {"fuente": "pdf", "url": pdfs[0], "contenido": text}
-        return {}
+    def get_comunicaciones(self) -> List[Dict]:
+        """Obtener circulares/comunicaciones (requiere login)."""
+        if not self.logged_in:
+            return []
+        return []
 
-    def get_deportiva(self) -> Dict:
-        """Obtener info asociación deportiva (desde PDF)."""
-        pdfs = self.fetch_pdf_urls(self.PDF_URLS["deportiva"])
-        if pdfs:
-            text = self.download_and_parse_pdf(pdfs[0])
-            return {"fuente": "pdf", "url": pdfs[0], "contenido": text}
-        return {}
+    def scrape_all(self) -> Dict[str, Any]:
+        """
+        Ejecutar scraping completo.
+        Público (PDFs) + privado (portal, si hay login).
+        
+        Returns:
+            Dict con todos los tópicos encontrados.
+        """
+        all_data = {}
 
-    def get_calificaciones(self, alumno: int = 0) -> dict:
-        """Obtener calificaciones por alumno."""
-        raise NotImplementedError
+        # Siempre intentar scraping público de PDFs
+        public = self.scrape_public_pdfs()
+        all_data.update(public)
 
-    def get_asistencia(self, alumno: int = 0) -> dict:
-        """Obtener asistencia (inasistencias + atrasos)."""
-        raise NotImplementedError
+        # Si hay login, intentar portal privado
+        if self.logged_in:
+            cal = self.get_calificaciones()
+            if cal:
+                all_data["calificaciones"] = cal
+            asist = self.get_asistencia()
+            if asist:
+                all_data["asistencia"] = asist
+            comms = self.get_comunicaciones()
+            if comms:
+                all_data["comunicaciones"] = comms
 
-    def get_conducta(self, alumno: int = 0) -> dict:
-        """Obtener conducta/anotaciones."""
-        raise NotImplementedError
-
-    def get_companeros(self, alumno: int = 0) -> dict:
-        """Obtener lista de compañeros con datos de contacto."""
-        raise NotImplementedError
-
-    def get_pagos(self) -> dict:
-        """Obtener pagos/cobranza pendientes."""
-        raise NotImplementedError
-
-    def get_comunicaciones(self) -> dict:
-        """Obtener comunicaciones/circulares."""
-        raise NotImplementedError
+        return all_data

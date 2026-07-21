@@ -88,11 +88,15 @@ JSON:"""
         )
         text = response.content[0].text.strip()
         
-        # Parsear JSON (puede venir con ```json wrapper)
+        # Parsear JSON (puede venir con ```json wrapper o texto extra después)
         text = re.sub(r'^```json\s*', '', text)
         text = re.sub(r'\s*```$', '', text)
+        # Extraer solo el array JSON (ignorar texto extra después del ])
+        json_match = re.search(r'\[.*\]', text, re.DOTALL)
+        if not json_match:
+            return []
         
-        events = json.loads(text)
+        events = json.loads(json_match.group())
         if not isinstance(events, list):
             return []
             
@@ -163,8 +167,12 @@ JSON:"""
         text = response.content[0].text.strip()
         text = re.sub(r'^```json\s*', '', text)
         text = re.sub(r'\s*```$', '', text)
+        # Extraer solo el array JSON (ignorar texto extra después del ])
+        json_match = re.search(r'\[.*\]', text, re.DOTALL)
+        if not json_match:
+            return []
         
-        events = json.loads(text)
+        events = json.loads(json_match.group())
         if not isinstance(events, list):
             return []
             

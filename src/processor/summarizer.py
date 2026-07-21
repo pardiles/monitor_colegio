@@ -152,24 +152,25 @@ FORMATO OBLIGATORIO:
 🏫 HOY [día] - [HIJO] ([curso]):
 • Ramos: [lista]. Sale a las [hora]
 • ⚠️ Prueba/evaluación (fuente: calendario)
-• ⚽ Extraprogramática (fuente: config)
+• ⚽ Extraprogramática: [nombre] [horario]
 (repetir para cada hijo)
 
-📅 MAÑANA [día]:
-• [HIJO]: [qué toca, hora salida, pruebas, actividades] (fuente: ...)
-(si es resumen semanal, repetir para cada día de la semana)
+🍽️ Casino hoy: [menú] (si hay info disponible)
 
-📨 PENDIENTES:
+📨 PENDIENTES (solo si hay algo para hoy o mañana):
 • [Entrega/plazo] - [HIJO] (fuente: ...)
 
 REGLAS DE FORMATO:
-- Agrupar por DÍA, no por fuente. Si 2 fuentes dicen lo mismo, usar la que tenga más detalle
-- Al final de cada punto, indicar la fuente entre paréntesis: (SC Info), (email), (WA 5°A), (calendario), (SchoolNet)
-- NO repetir la misma info si viene de múltiples fuentes — fusionar en 1 línea con la fuente más completa
+- FOCO del resumen AM: lo que pasa HOY. Solo 1 día (hoy).
+- NO incluir sección "MAÑANA" — eso va en el resumen PM
+- Avisos generales: solo los relevantes para hoy o urgentes
+- Agrupar por HIJO dentro de HOY. Si 2 fuentes dicen lo mismo, fusionar
+- DEDUPLICAR: cada evento/prueba/cumpleaños aparece UNA SOLA VEZ. Si viene de WA + calendario, fusionar en 1 línea
+- WA GRUPOS: solo mencionar info NUEVA o RELEVANTE que no esté ya en calendario/emails. Ej: coordinaciones (quién lleva torta), logística, cambios de última hora
 - SIEMPRE incluir hora de salida por hijo
-- ⚠️ REUNIONES/ENTREVISTAS del calendario_persistente con hora: INCLUIR SIEMPRE con ⚠️, fecha, hora y lugar. NUNCA omitirlas. Son citas confirmadas.
-- SIEMPRE revisar calendario_persistente para HOY y próximos 5 días
-- Máximo 22 líneas
+- ⚠️ REUNIONES/ENTREVISTAS del calendario_persistente con hora para HOY: INCLUIR SIEMPRE con ⚠️, hora y lugar. NUNCA omitirlas.
+- Si hay algo urgente para MAÑANA (reunión con hora), mencionarlo brevemente al final como recordatorio
+- Máximo 18 líneas
 - Español chileno natural
 """
 
@@ -194,20 +195,23 @@ FORMATO OBLIGATORIO:
 🏫 [HIJO] ([curso]):
 • Ramos: [lista]. Sale a las [hora]
 • ⚠️ Prueba/evaluación si tiene (fuente: calendario)
-• ⚽ Extraprogramática (fuente: config)
+• ⚽ Extraprogramática: [nombre] [horario]
 (repetir para cada hijo)
 
-📅 PRÓXIMOS DÍAS (si hay eventos relevantes en los próximos 3 días):
-• [Día]: [Evento] - [HIJO] (fuente: ...)
+🍽️ Casino mañana: [menú] (si hay info disponible)
 
 REGLAS DE FORMATO:
-- NO repetir info que ya se dijo en el resumen AM de hoy (avisos generales, calendario, etc.)
-- Solo incluir NOVEDADES: emails/comunicaciones que llegaron HOY, mensajes WA de HOY
-- La sección MAÑANA SÍ se repite siempre (es la preparación para el día siguiente)
+- FOCO del resumen PM: preparar para MAÑANA. Solo 1 día (mañana), NO más días.
+- Novedades de hoy: solo info nueva que llegó DURANTE el día (emails, WA)
+- NO repetir info que ya se dijo en el resumen AM de hoy
+- Solo incluir "PRÓXIMOS DÍAS" si hay algo urgente (reunión/entrevista con hora en los próximos 2 días)
 - Agrupar por DÍA, no por fuente. Fusionar si 2 fuentes dicen lo mismo
+- DEDUPLICAR: si un cumpleaños, evento o actividad aparece tanto en WA como en calendario/email, mencionarlo UNA SOLA VEZ en la sección del día correspondiente
+- WA GRUPOS: solo mencionar info NUEVA o RELEVANTE que no esté ya en calendario/emails. Ej: coordinaciones (quién lleva torta), logística, cambios de última hora
 - Indicar fuente al final: (SC Info), (email), (WA 5°A), (calendario)
 - ⚠️ REUNIONES/ENTREVISTAS del calendario_persistente con hora: INCLUIR SIEMPRE con ⚠️, fecha, hora y lugar. NUNCA omitirlas.
 - SIEMPRE revisar calendario_persistente para mañana y próximos 5 días
+- CASINO: Si hay info de menú casino, mostrarlo como "🍽️ Casino mañana: [menú]" (NO "casino hoy" — ya pasó)
 - Si es SÁBADO o DOMINGO: solo enviar si hay eventos/actividades para ese día o el siguiente (cumpleaños, partidos, actividades, etc.). Si no hay nada, el resumen AM dice "Sin actividades este fin de semana" y prepara para el lunes.
 - Omitir secciones vacías
 - Máximo 25 líneas
@@ -221,7 +225,7 @@ Si es domingo PM, cambiar el formato a panorama COMPLETO de la semana que viene:
 • [avisos que aplican a toda la semana]
 
 📅 LUNES [fecha]:
-🏫 [HIJO]: [ramos, hora salida, pruebas, actividades] (fuente)
+🏫 [HIJO]: [ramos, hora salida, pruebas, actividades, extraprogramáticas] (fuente)
 (repetir por cada hijo)
 
 📅 MARTES [fecha]:
@@ -231,7 +235,12 @@ Si es domingo PM, cambiar el formato a panorama COMPLETO de la semana que viene:
 📨 PENDIENTES/PLAZOS DE LA SEMANA:
 • [entrega/plazo] - [HIJO] (fuente)
 
-En el semanal SÍ incluir TODO del calendario_persistente para esa semana.
+REGLAS DEL SEMANAL:
+- Incluir TODO del calendario_persistente para esa semana
+- DEDUPLICAR: cada evento/prueba/cumpleaños aparece UNA SOLA VEZ en el día que corresponde. Si viene de WA + calendario, fusionar en 1 línea
+- WA GRUPOS: solo incluir coordinaciones/logística relevante para la semana (quién lleva torta, horario partido, etc.), NO repetir eventos que ya están en el calendario
+- Extraprogramáticas: incluir en cada día correspondiente (ej: "⚽ Fútbol 16:15-17:45" el lunes)
+- Máximo 40 líneas (es el resumen largo de la semana)
 """
 
 
