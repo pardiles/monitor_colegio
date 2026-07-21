@@ -15,16 +15,25 @@ const https = require('https');
 const BASE_DIR = '/opt/monitor-colegio';
 const DATA_DIR = path.join(BASE_DIR, 'data');
 const ATTACHMENTS_DIR = path.join(DATA_DIR, 'attachments');
-const USERS_FILE = path.join(BASE_DIR, 'config', 'users.json');
+const USERS_DIR = path.join(BASE_DIR, 'config', 'users');
+const USERS_FILE = path.join(BASE_DIR, 'config', 'users.json'); // fallback legacy
 const WA_MESSAGES_FILE = path.join(DATA_DIR, 'whatsapp_messages.json');
 
-// Cargar API key de Anthropic desde .env
+// Cargar API keys desde .env
 let ANTHROPIC_API_KEY = '';
+let GEMINI_API_KEY = '';
+let AI_ENGINE = 'gemini'; // default: gemini (más barato)
 try {
     const envFile = fs.readFileSync(path.join(BASE_DIR, '.env'), 'utf-8');
     for (const line of envFile.split('\n')) {
         if (line.startsWith('ANTHROPIC_API_KEY=')) {
             ANTHROPIC_API_KEY = line.split('=')[1].trim().replace(/['"]/g, '');
+        }
+        if (line.startsWith('GEMINI_API_KEY=')) {
+            GEMINI_API_KEY = line.split('=')[1].trim().replace(/['"]/g, '');
+        }
+        if (line.startsWith('AI_ENGINE=')) {
+            AI_ENGINE = line.split('=')[1].trim().replace(/['"]/g, '');
         }
     }
 } catch {}
@@ -65,7 +74,7 @@ function addBotResponse(userId, response) {
  * Bot conversacional: responde preguntas del apoderado en el grupo Monitor.
  */
 async function botRespond(sock, groupId, question, userCfg) {
-    if (!ANTHROPIC_API_KEY) return;
+    if (!GEMINI_API_KEY && !ANTHROPIC_API_KEY) return;
 
     // Solo responder a preguntas (contiene ?)
     if (!question.includes('?')) return;
@@ -80,7 +89,16 @@ async function botRespond(sock, groupId, question, userCfg) {
         if (h.colegio) line += ` [${h.colegio}]`;
         return line;
     }).join('\n');
-    const extras = (userCfg.extraprogramaticas || []).map(e => `${e.nombre}: ${e.dia} ${e.horario} (${e.hijo}) → sale ${e.hora_salida_real}`).join('\n');
+    const extras = (userCfg.extraprogramaticas || []).filter(e => {
+        if (!e.fecha_inicio) return true;
+        const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Santiago' });
+        return e.fecha_inicio <= today;
+    }).map(e => `${e.nombre}: ${e.dia} ${e.horario} (${e.hijo}) → sale ${e.hora_salida_real}`).join('\n');
+    const extrasProximas = (userCfg.extraprogramaticas || []).filter(e => {
+        if (!e.fecha_inicio) return false;
+        const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Santiago' });
+        return e.fecha_inicio > today;
+    }).map(e => `${e.nombre}: ${e.dia} ${e.horario} (${e.hijo}) — inicia ${e.fecha_inicio}`).join('\n');
     const horarios = loadJSON(path.join(DATA_DIR, 'horarios.json'), {});
 
     // Datos adicionales del colegio (profesores, compañeros, etc.)
@@ -280,8 +298,9 @@ ${hijos}
 
 Colegio: ${colegio.nombre || ''}
 
-Extraprogramáticas:
+Extraprogramáticas activas:
 ${extras || 'No configuradas'}
+${extrasProximas ? '\nExtraprogramáticas por comenzar (aún no parten):\n' + extrasProximas : ''}
 
 Régimen custodia: ${regimen.tipo || 'No aplica'}${regimen.padre ? ` (${regimen.padre} / ${regimen.madre})` : ''}
 ${horariosTxt}
@@ -306,52 +325,99 @@ Menú casino hoy: ${botContext.casino_hoy || botContext.casino_menu || 'No dispo
 
 Fecha de hoy: ${today}`;
 
-    const body = JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 200,
-        system: `Eres un bot de WhatsApp que responde preguntas de un apoderado sobre el colegio de sus hijos. Responde breve (1-3 líneas máximo), amigable, útil. Si no tienes la info, di "No tengo esa info, mejor confirma con el colegio 📞". Contexto:\n${context}`,
-        messages: getConversationHistory(userCfg.id, question),
-    });
+    const systemPrompt = `Eres un bot de WhatsApp que responde preguntas de un apoderado sobre el colegio de sus hijos. Responde breve (1-3 líneas máximo), amigable, útil. Si no tienes la info, di "No tengo esa info, mejor confirma con el colegio 📞". Contexto:\n${context}`;
 
-    return new Promise((resolve) => {
-        const req = https.request({
-            hostname: 'api.anthropic.com',
-            path: '/v1/messages',
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': ANTHROPIC_API_KEY,
-                'anthropic-version': '2023-06-01',
-            },
-        }, (res) => {
-            let data = '';
-            res.on('data', chunk => data += chunk);
-            res.on('end', async () => {
-                try {
-                    const json = JSON.parse(data);
-                    const answer = json.content?.[0]?.text;
-                    if (answer) {
-                        // Delay humano (3-8 segundos)
-                        const delay = 3000 + Math.random() * 5000;
-                        await sock.sendPresenceUpdate('composing', groupId);
-                        await new Promise(r => setTimeout(r, delay));
-                        await sock.sendMessage(groupId, { text: `🤖 ${answer}` });
-                        addBotResponse(userCfg.id, answer);
-                        console.log(`[${userCfg.id}][BOT] Respondió: ${answer.substring(0, 50)}`);
+    // Seleccionar engine
+    const useGemini = AI_ENGINE === 'gemini' && GEMINI_API_KEY;
+    
+    if (useGemini) {
+        // Gemini Flash API
+        const body = JSON.stringify({
+            contents: [{
+                parts: [{ text: `${systemPrompt}\n\n---\nPregunta del apoderado: ${question}` }]
+            }],
+            generationConfig: {
+                maxOutputTokens: 200,
+                temperature: 0.3,
+            }
+        });
+
+        return new Promise((resolve) => {
+            const req = https.request({
+                hostname: 'generativelanguage.googleapis.com',
+                path: `/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            }, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', async () => {
+                    try {
+                        const json = JSON.parse(data);
+                        const answer = json.candidates?.[0]?.content?.parts?.[0]?.text;
+                        if (answer) {
+                            const delay = 3000 + Math.random() * 5000;
+                            await sock.sendPresenceUpdate('composing', groupId);
+                            await new Promise(r => setTimeout(r, delay));
+                            await sock.sendMessage(groupId, { text: `🤖 ${answer}` });
+                            addBotResponse(userCfg.id, answer);
+                            console.log(`[${userCfg.id}][BOT/gemini] ${answer.substring(0, 50)}`);
+                        }
+                    } catch (e) {
+                        console.log(`[${userCfg.id}][BOT/gemini] Error: ${e.message}`);
                     }
-                } catch (e) {
-                    console.log(`[${userCfg.id}][BOT] Error parsing: ${e.message}`);
-                }
-                resolve();
+                    resolve();
+                });
             });
+            req.on('error', (e) => { console.log(`[${userCfg.id}][BOT/gemini] HTTP Error: ${e.message}`); resolve(); });
+            req.write(body);
+            req.end();
         });
-        req.on('error', (e) => {
-            console.log(`[${userCfg.id}][BOT] Error HTTP: ${e.message}`);
-            resolve();
+    } else {
+        // Claude Haiku API (fallback)
+        const body = JSON.stringify({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 200,
+            system: systemPrompt,
+            messages: getConversationHistory(userCfg.id, question),
         });
-        req.write(body);
-        req.end();
-    });
+
+        return new Promise((resolve) => {
+            const req = https.request({
+                hostname: 'api.anthropic.com',
+                path: '/v1/messages',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': ANTHROPIC_API_KEY,
+                    'anthropic-version': '2023-06-01',
+                },
+            }, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', async () => {
+                    try {
+                        const json = JSON.parse(data);
+                        const answer = json.content?.[0]?.text;
+                        if (answer) {
+                            const delay = 3000 + Math.random() * 5000;
+                            await sock.sendPresenceUpdate('composing', groupId);
+                            await new Promise(r => setTimeout(r, delay));
+                            await sock.sendMessage(groupId, { text: `🤖 ${answer}` });
+                            addBotResponse(userCfg.id, answer);
+                            console.log(`[${userCfg.id}][BOT/haiku] ${answer.substring(0, 50)}`);
+                        }
+                    } catch (e) {
+                        console.log(`[${userCfg.id}][BOT/haiku] Error: ${e.message}`);
+                    }
+                    resolve();
+                });
+            });
+            req.on('error', (e) => { console.log(`[${userCfg.id}][BOT/haiku] HTTP Error: ${e.message}`); resolve(); });
+            req.write(body);
+            req.end();
+        });
+    }
 }
 
 /**
@@ -556,10 +622,32 @@ async function main() {
     // Ensure outbox is world-writable (send_whatsapp.js runs as root via SSM)
     try { fs.chmodSync(path.join(DATA_DIR, 'outbox'), 0o777); } catch {}
 
-    // Cargar usuarios
-    const users = loadJSON(USERS_FILE, []);
+    // Cargar usuarios desde archivos individuales (S3) + fallback legacy
+    let users = [];
+    if (fs.existsSync(USERS_DIR)) {
+        const files = fs.readdirSync(USERS_DIR).filter(f => f.endsWith('.json') && f !== 'admin.json');
+        for (const file of files) {
+            try {
+                const u = JSON.parse(fs.readFileSync(path.join(USERS_DIR, file), 'utf-8'));
+                if (u.id) users.push(u);
+            } catch {}
+        }
+    }
+    // Merge con legacy (para campos que solo existen ahí, como colegio detallado)
+    const legacyUsers = loadJSON(USERS_FILE, []);
+    for (const lu of legacyUsers) {
+        const existing = users.find(u => u.id === lu.id);
+        if (existing) {
+            // Legacy overrides solo campos vacíos en S3
+            for (const [k, v] of Object.entries(lu)) {
+                if (v && !existing[k]) existing[k] = v;
+            }
+        } else {
+            users.push(lu);
+        }
+    }
     if (users.length === 0) {
-        console.log('No hay usuarios en config/users.json');
+        console.log('No hay usuarios en config/users/ ni config/users.json');
         return;
     }
 
@@ -596,7 +684,21 @@ async function main() {
             for (const file of files) {
                 const filePath = path.join(OUTBOX_DIR, file);
                 const data = loadJSON(filePath, null);
-                if (!data || data.status !== 'pending') continue;
+                if (!data) continue;
+                // Procesar pendientes y reintentar errores recientes (menos de 30 min)
+                if (data.status === 'pending') {
+                    // OK, procesar
+                } else if (data.status === 'error') {
+                    // Reintentar si el error fue hace menos de 30 min y no ha reintentado más de 3 veces
+                    const retries = data._retries || 0;
+                    const errorAge = Date.now() - new Date(data.created_at || 0).getTime();
+                    if (retries >= 3 || errorAge > 30 * 60 * 1000) continue;
+                    data._retries = retries + 1;
+                    data.status = 'pending';
+                    console.log(`[${data.user_id}][OUTBOX] Reintento #${data._retries}`);
+                } else {
+                    continue;
+                }
 
                 const userId = data.user_id;
                 const sock = activeSessions[userId];

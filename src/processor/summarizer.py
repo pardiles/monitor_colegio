@@ -68,12 +68,21 @@ def build_context(user_cfg: Optional[Dict] = None) -> str:
             lines.append(f"- Semana referencia {regimen.get('semana_referencia', '')}: {regimen['semana_actual']}")
         lines.append("- En el resumen indicar quién tiene los niños esta semana")
 
-    # Extraprogramáticas
+    # Extraprogramáticas (solo las que ya comenzaron)
     extras = user_cfg.get("extraprogramaticas", [])
     if extras:
-        lines.append("\nExtraprogramáticas:")
-        for e in extras:
-            lines.append(f"- {e['nombre']}: {e['dia']} {e['horario']} ({e['hijo']}) → sale a las {e.get('hora_salida_real', '')}")
+        today_str = datetime.now(ZoneInfo("America/Santiago")).strftime("%Y-%m-%d")
+        active_extras = [e for e in extras if not e.get("fecha_inicio") or e["fecha_inicio"] <= today_str]
+        if active_extras:
+            lines.append("\nExtraprogramáticas activas:")
+            for e in active_extras:
+                lines.append(f"- {e['nombre']}: {e['dia']} {e['horario']} ({e['hijo']}) → sale a las {e.get('hora_salida_real', '')}")
+        # Mencionar las que empiezan pronto
+        upcoming_extras = [e for e in extras if e.get("fecha_inicio") and e["fecha_inicio"] > today_str]
+        if upcoming_extras:
+            lines.append("\nExtraprogramáticas por comenzar:")
+            for e in upcoming_extras:
+                lines.append(f"- {e['nombre']}: {e['dia']} {e['horario']} ({e['hijo']}) — inicia {e['fecha_inicio']}")
 
     # Pagos
     pagos = user_cfg.get("pagos")

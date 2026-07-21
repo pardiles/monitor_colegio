@@ -55,11 +55,20 @@ def main():
     plat_pass = creds.get("pass", "")
 
     # Leer config del usuario para saber el colegio
-    users_file = os.path.join("config", "users.json")
-    users = []
-    if os.path.exists(users_file):
-        with open(users_file, "r", encoding="utf-8") as f:
-            users = json.load(f)
+    user_cfg = None
+    # Primero intentar archivo individual (S3)
+    individual_file = os.path.join("config", "users", f"{user_id}.json")
+    if os.path.exists(individual_file):
+        with open(individual_file, "r", encoding="utf-8") as f:
+            user_cfg = json.load(f)
+    # Fallback: legacy users.json
+    if not user_cfg:
+        users_file = os.path.join("config", "users.json")
+        users = []
+        if os.path.exists(users_file):
+            with open(users_file, "r", encoding="utf-8") as f:
+                users = json.load(f)
+        user_cfg = next((u for u in users if u["id"] == user_id), None)
 
     user_cfg = next((u for u in users if u["id"] == user_id), None)
     colegio_nombre = ""

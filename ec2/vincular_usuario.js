@@ -31,12 +31,18 @@ if (!userId) {
 const method = process.argv[3] || 'qr'; // 'qr', 'code', o 'create_group'
 const phone = process.argv[4] || '';
 
-// Leer auth_folder desde config del usuario (si existe)
+// Leer config del usuario (primero individual de S3, luego legacy)
+const USERS_DIR = path.join(BASE_DIR, 'config', 'users');
 const USERS_FILE = path.join(BASE_DIR, 'config', 'users.json');
 let userCfg = {};
 try {
-    const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8'));
-    userCfg = users.find(u => u.id === userId) || {};
+    const individualFile = path.join(USERS_DIR, `${userId}.json`);
+    if (fs.existsSync(individualFile)) {
+        userCfg = JSON.parse(fs.readFileSync(individualFile, 'utf-8'));
+    } else {
+        const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8'));
+        userCfg = users.find(u => u.id === userId) || {};
+    }
 } catch {}
 const authFolder = path.join(BASE_DIR, userCfg?.whatsapp?.auth_folder || `baileys_auth/${userId}`);
 const qrFile = path.join('/tmp', `qr_${userId}.png`);
@@ -160,8 +166,13 @@ async function start() {
         }
 
         if (connection === 'open') {
+            // Verificar que realmente hay una sesión autenticada (no solo WebSocket abierto)
+            if (!sock.authState?.creds?.me?.id) {
+                console.log(`[${userId}] WebSocket abierto pero sin auth - esperando QR/pairing...`);
+                return;
+            }
             connected = true;
-            console.log(`[${userId}] ¡WhatsApp VINCULADO!`);
+            console.log(`[${userId}] ¡WhatsApp VINCULADO! (${sock.authState.creds.me.id})`);
 
             // Limpiar QR de S3
             try {
@@ -352,19 +363,33 @@ async function createMonitorGroup(sock) {
             ContentType: 'application/json',
         }));
 
-        // Actualizar users.json local con el nuevo grupo_monitor
+        // Actualizar config individual del usuario con grupo_monitor
+        try {
+            const userFile2 = path.join(BASE_DIR, 'config', 'users', `${userId}.json`);
+            let cfg = {};
+            if (fs.existsSync(userFile2)) {
+                cfg = JSON.parse(fs.readFileSync(userFile2, 'utf-8'));
+            }
+            if (!cfg.whatsapp) cfg.whatsapp = {};
+            cfg.whatsapp.grupo_monitor = groupId;
+            fs.writeFileSync(userFile2, JSON.stringify(cfg, null, 2), 'utf-8');
+            console.log(`[${userId}] grupo_monitor actualizado en config/users/${userId}.json`);
+        } catch (e) {
+            console.log(`[${userId}] Error actualizando config individual: ${e.message}`);
+        }
+
+        // Fallback: actualizar legacy users.json si existe
         try {
             const usersFile2 = path.join(BASE_DIR, 'config', 'users.json');
-            const users2 = JSON.parse(fs.readFileSync(usersFile2, 'utf-8'));
-            const u2 = users2.find(u => u.id === userId);
-            if (u2 && u2.whatsapp) {
-                u2.whatsapp.grupo_monitor = groupId;
-                fs.writeFileSync(usersFile2, JSON.stringify(users2, null, 2), 'utf-8');
-                console.log(`[${userId}] grupo_monitor actualizado en users.json`);
+            if (fs.existsSync(usersFile2)) {
+                const users2 = JSON.parse(fs.readFileSync(usersFile2, 'utf-8'));
+                const u2 = users2.find(u => u.id === userId);
+                if (u2 && u2.whatsapp) {
+                    u2.whatsapp.grupo_monitor = groupId;
+                    fs.writeFileSync(usersFile2, JSON.stringify(users2, null, 2), 'utf-8');
+                }
             }
-        } catch (e) {
-            console.log(`[${userId}] Error actualizando users.json: ${e.message}`);
-        }
+        } catch {}
 
         // Enviar mensaje de bienvenida al grupo y pinearlo
         const hijosNombres = (userCfg.hijos || []).map(h => h.nombre || h.nombre_completo?.split(' ')[0] || '').filter(Boolean);

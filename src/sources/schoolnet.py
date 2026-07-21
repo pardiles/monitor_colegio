@@ -93,11 +93,33 @@ class SchoolNetClient:
         extras = []
         
         with sync_playwright() as p:
-            # headless=False + xvfb evita detección de Cloudflare (fingerprint de Chrome real)
-            browser = p.chromium.launch(headless=False)
-            context = browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            # Anti-detección: headless=False + stealth
+            browser = p.chromium.launch(
+                headless=False,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                ]
             )
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                viewport={"width": 1366, "height": 768},
+                locale="es-CL",
+                timezone_id="America/Santiago",
+            )
+            # Aplicar stealth para bypass Cloudflare
+            try:
+                from playwright_stealth import Stealth
+                stealth = Stealth()
+                stealth.apply(context)
+            except Exception:
+                # Fallback: script manual anti-detección
+                context.add_init_script("""
+                    Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                    window.chrome = {runtime: {}};
+                    Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+                    Object.defineProperty(navigator, 'languages', {get: () => ['es-CL', 'es', 'en']});
+                """)
             page = context.new_page()
 
             # 1. Login en SchoolNet
@@ -129,30 +151,12 @@ class SchoolNetClient:
                 if "colegium" in c.get("domain", "")
             }
             
-            # 2. Obtener SSO URL via fetch en el browser (no via requests, así no consume el token)
+            # 2. Navegar a extracurriculares desde SchoolNet (redirect SSO natural)
             self._init_session()
             time.sleep(1)
             
-            try:
-                sso_url = page.evaluate("""async () => {
-                    const resp = await fetch('/webapp/es_CL/extracurricularescondor/index', {
-                        credentials: 'include'
-                    });
-                    const data = await resp.json();
-                    return data.url || '';
-                }""")
-            except Exception:
-                sso_url = self.get_extracurriculares_url()
-            
-            if not sso_url:
-                browser.close()
-                return []
-            
-            print(f"   🔗 SSO URL: {sso_url[:80]}")
-            
-            # 3. Navegar al SSO URL y capturar responses de /datos
+            # Interceptar responses de /datos
             datos_responses = []
-            
             def capture_datos(response):
                 if "/datos" in response.url and response.status == 200:
                     try:
@@ -161,13 +165,58 @@ class SchoolNetClient:
                             datos_responses.append(body)
                     except Exception:
                         pass
-            
             page.on("response", capture_datos)
-            page.goto(sso_url, wait_until="networkidle", timeout=60000)
             
-            # Esperar a que /datos se resuelva
-            for _ in range(15):
-                if datos_responses:
+            # Navegar al link de extracurriculares dentro de SchoolNet
+            # Esto hace el redirect SSO automáticamente en el mismo browser
+            print("   🔗 Navegando a extracurriculares via SchoolNet...")
+            page.goto(f"{self.BASE_URL}/extracurricularescondor/index", wait_until="networkidle", timeout=30000)
+            time.sleep(3)
+            
+            # Si SchoolNet devolvió JSON (no hizo redirect), obtener URL y navegar
+            current_url = page.url
+            if "extracurriculares.colegium.com" not in current_url:
+                # Leer la URL del response JSON
+                try:
+                    page_content = page.evaluate("() => document.body.innerText || ''")
+                    import json as _json2
+                    data = _json2.loads(page_content)
+                    sso_url = data.get("url", "")
+                except Exception:
+                    sso_url = self.get_extracurriculares_url()
+                
+                if not sso_url:
+                    browser.close()
+                    return []
+                
+                print(f"   🔗 SSO URL: {sso_url[:80]}")
+                page.goto(sso_url, wait_until="networkidle", timeout=60000)
+            
+            # Esperar a que la página cargue completamente
+            time.sleep(10)
+            
+            # Si Cloudflare muestra un challenge, esperar a que se resuelva
+            try:
+                # El challenge de Cloudflare genera un iframe con id "challenge-..."
+                # Esperar a que desaparezca o a que la página tenga contenido real
+                page.wait_for_function(
+                    """() => !document.querySelector('iframe[src*="challenge"]') && document.body.innerText.length > 200""",
+                    timeout=15000
+                )
+            except Exception:
+                pass
+            time.sleep(3)
+            
+            # Forzar recarga de datos: el SPA de extracurriculares llama a /datos al init
+            # Si no se disparó automáticamente, recargar la página
+            if not any(len(r) > 1000 for r in datos_responses):
+                print("   🔄 Recargando página para obtener datos...")
+                page.reload(wait_until="networkidle", timeout=30000)
+                time.sleep(10)
+            
+            # Esperar /datos con datos reales (más de 1000 chars)
+            for _ in range(10):
+                if any(len(r) > 1000 for r in datos_responses):
                     break
                 time.sleep(2)
             
@@ -195,45 +244,43 @@ class SchoolNetClient:
                     except Exception:
                         pass
                 
-                # Si obtuvimos UUIDs de alumnos pero no actividades, hacer POST por cada uno
+                # Si obtuvimos UUIDs de alumnos pero no actividades, hacer click real por cada uno
                 if not extras and hasattr(self, '_alumno_uuids') and self._alumno_uuids:
-                    print(f"   🔄 POST getUserApplications/inscritas para {len(self._alumno_uuids)} alumnos...")
+                    print(f"   🔄 Click real en alumnos para disparar POST...")
                     for alumno_info in self._alumno_uuids:
-                        uuid = alumno_info["uuid"]
                         nombre = alumno_info["nombres"]
                         try:
-                            # Disparar el POST clickeando el alumno en la UI
-                            # (el fetch directo es bloqueado por Cloudflare)
+                            # Remover overlay
+                            page.evaluate("() => { document.querySelectorAll('[id*=bloquear]').forEach(el => el.remove()); }")
+                            time.sleep(1)
+                            
+                            # Click REAL con Playwright (simula mouse, no JS) en el nombre del alumno
+                            alumno_locator = page.locator(f"text={nombre}").first
+                            if alumno_locator.is_visible(timeout=5000):
+                                alumno_locator.click(force=True)
+                                time.sleep(6)
+                            
+                            # Remover overlay post-click
+                            page.evaluate("() => { document.querySelectorAll('[id*=bloquear]').forEach(el => el.remove()); }")
+                            time.sleep(1)
+                            
+                            # Click REAL en tab Inscritas
+                            inscritas_locator = page.locator("a[href='#tabInscritas']").first
+                            if inscritas_locator.is_visible(timeout=5000):
+                                inscritas_locator.click(force=True)
+                                time.sleep(6)
+                            
+                            # Remover overlay otra vez
                             page.evaluate("() => { document.querySelectorAll('[id*=bloquear]').forEach(el => el.remove()); }")
                             
-                            # Click en el alumno por nombre
-                            clicked = page.evaluate(f"""() => {{
-                                const els = document.querySelectorAll('*');
-                                for (const el of els) {{
-                                    const t = (el.textContent || '').trim();
-                                    const alt = el.alt || '';
-                                    if (t === '{nombre}' || alt === '{nombre}') {{
-                                        el.click();
-                                        if (el.parentElement) el.parentElement.click();
-                                        return true;
-                                    }}
-                                }}
-                                return false;
-                            }}""")
+                            # Esperar a que aparezcan responses con inscritas
+                            for _ in range(5):
+                                new_responses = [r for r in datos_responses if '"inscritas"' in r]
+                                if new_responses:
+                                    break
+                                time.sleep(2)
                             
-                            if clicked:
-                                time.sleep(5)
-                                page.evaluate("() => { document.querySelectorAll('[id*=bloquear]').forEach(el => el.remove()); }")
-                                
-                                # Click en Inscritas
-                                page.evaluate("""() => {
-                                    const links = document.querySelectorAll('a[href*=tabInscritas]');
-                                    if (links.length) links[0].click();
-                                }""")
-                                time.sleep(5)
-                            
-                            # Ahora capturar lo que la página cargó via las responses interceptadas
-                            # Las responses del POST se capturan en datos_responses
+                            # Parsear responses capturadas
                             new_responses = [r for r in datos_responses if '"inscritas"' in r]
                             for resp_body in new_responses:
                                 try:
@@ -246,8 +293,11 @@ class SchoolNetClient:
                                 except Exception:
                                     pass
                             
+                            # Limpiar responses procesadas
+                            datos_responses[:] = [r for r in datos_responses if '"inscritas"' not in r]
+                            
                             if not new_responses:
-                                # Fallback: leer innerText de la página
+                                print(f"   ⚠️ {nombre}: no se capturaron responses de inscritas")
                                 text = page.evaluate("() => document.body.innerText")
                                 horario_pat = re.compile(r'(LUN|MAR|MI[EÉ]|JUE|VIE)\s+(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})', re.IGNORECASE)
                                 for m in horario_pat.finditer(text):

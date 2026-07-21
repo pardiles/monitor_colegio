@@ -14,7 +14,8 @@ const path = require('path');
 const BASE_DIR = '/opt/monitor-colegio';
 const DATA_DIR = path.join(BASE_DIR, 'data');
 const OUTBOX_DIR = path.join(DATA_DIR, 'outbox');
-const USERS_FILE = path.join(BASE_DIR, 'config', 'users.json');
+const USERS_DIR = path.join(BASE_DIR, 'config', 'users');
+const USERS_FILE = path.join(BASE_DIR, 'config', 'users.json'); // fallback
 
 function loadJSON(file) {
     try { return JSON.parse(fs.readFileSync(file, 'utf-8')); }
@@ -27,12 +28,19 @@ if (!userId) {
     process.exit(1);
 }
 
-// Cargar config del usuario
-const users = loadJSON(USERS_FILE) || [];
-const userCfg = users.find(u => u.id === userId || u.id.includes(userId));
+// Cargar config del usuario (primero individual, luego legacy)
+let userCfg = null;
+const individualFile = path.join(USERS_DIR, `${userId}.json`);
+if (fs.existsSync(individualFile)) {
+    userCfg = loadJSON(individualFile);
+}
+if (!userCfg) {
+    const users = loadJSON(USERS_FILE) || [];
+    userCfg = users.find(u => u.id === userId || u.id.includes(userId));
+}
 
 if (!userCfg) {
-    console.error(`Usuario '${userId}' no encontrado en users.json`);
+    console.error(`Usuario '${userId}' no encontrado`);
     process.exit(1);
 }
 

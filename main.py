@@ -216,14 +216,21 @@ def ingest_oscar() -> dict:
     print(f"{'='*50}")
 
     # Cargar config de Oscar
-    users_file = os.path.join("config", "users.json")
-    if not os.path.exists(users_file):
-        print("   ❌ No se encontró config/users.json")
-        return data
-
-    with open(users_file, "r", encoding="utf-8") as f:
-        users = json.load(f)
-    oscar_cfg = next((u for u in users if u["id"] == "oscar_ardiles"), None)
+    oscar_cfg = None
+    # Primero intentar archivo individual
+    oscar_file = os.path.join("config", "users", "oscar_ardiles.json")
+    if os.path.exists(oscar_file):
+        with open(oscar_file, "r", encoding="utf-8") as f:
+            oscar_cfg = json.load(f)
+    # Fallback: legacy users.json
+    if not oscar_cfg:
+        users_file = os.path.join("config", "users.json")
+        if not os.path.exists(users_file):
+            print("   ❌ No se encontró config de Oscar")
+            return data
+        with open(users_file, "r", encoding="utf-8") as f:
+            users = json.load(f)
+        oscar_cfg = next((u for u in users if u["id"] == "oscar_ardiles"), None)
     if not oscar_cfg:
         print("   ❌ No se encontró config de Oscar")
         return data
@@ -369,8 +376,8 @@ MAX_USERS_PER_INSTANCE = 8
 
 def _load_users() -> list:
     """Cargar lista de usuarios.
-    Sincroniza desde S3 primero, luego lee local.
-    Legacy (users.json) es la base, S3 individual hace merge encima.
+    Fuente primaria: config/users/*.json (archivos individuales de S3)
+    Fallback: config/users.json (legacy, para campos que no estén en S3)
     """
     users = []
     seen_ids = set()
@@ -933,7 +940,7 @@ def main():
     # Cargar usuarios
     users = _load_users()
     if not users:
-        print("❌ No hay usuarios en config/users.json")
+        print("❌ No hay usuarios configurados")
         sys.exit(1)
 
     # Check capacidad

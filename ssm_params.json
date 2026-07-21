@@ -1,0 +1,5 @@
+{
+  "commands": [
+    "cd /opt/monitor-colegio && sudo -u ubuntu python3 -c \"import requests;r=requests.get('https://calendar.google.com/calendar/ical/calendariosegundociclo%40ssccmanquehue.cl/public/basic.ics',timeout=15);print('Status:',r.status_code);print('Content:',r.text[:500])\" 2>&1 | tail -15"
+  ]
+}

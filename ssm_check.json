@@ -1,0 +1,7 @@
+{
+  "commands": [
+    "cd /opt/monitor-colegio && node -e \"const {S3Client,GetObjectCommand}=require('@aws-sdk/client-s3');const fs=require('fs');const s3=new S3Client({region:'us-east-2'});async function dl(key,out){const r=await s3.send(new GetObjectCommand({Bucket:'monitor-colegio-config-669294688330',Key:key}));const body=await r.Body.transformToString();fs.writeFileSync(out,body);console.log('OK '+out)};(async()=>{await dl('deploy/event_extractor.py','/opt/monitor-colegio/src/sources/event_extractor.py');await dl('deploy/main.py','/opt/monitor-colegio/main.py');await dl('deploy/casino.py','/opt/monitor-colegio/src/sources/casino.py');console.log('DONE')})()\"",
+    "chmod 644 /opt/monitor-colegio/src/sources/event_extractor.py /opt/monitor-colegio/main.py /opt/monitor-colegio/src/sources/casino.py",
+    "chown ubuntu:ubuntu /opt/monitor-colegio/src/sources/event_extractor.py /opt/monitor-colegio/main.py /opt/monitor-colegio/src/sources/casino.py"
+  ]
+}
