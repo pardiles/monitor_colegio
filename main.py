@@ -38,6 +38,7 @@ from src.shared_cache import (
     get_scinfo, set_scinfo, get_noticias, set_noticias,
     get_companeros, set_companeros,
 )
+from src.user_storage import save_bot_context, load_instrucciones, update_meta
 # from src.messenger.whatsapp import WhatsAppSender  # Replaced by Baileys
 
 
@@ -955,9 +956,8 @@ def ingest_for_user(user_cfg: dict) -> dict:
         except Exception as e:
             print(f"   ⚠️ PDFs WA: {e}")
 
-        bot_context_file = os.path.join("data", f"bot_context_{user_id}.json")
-        with open(bot_context_file, "w", encoding="utf-8") as f:
-            json.dump(bot_context, f, indent=2, ensure_ascii=False)
+        save_bot_context(user_id, bot_context)
+        update_meta(user_id, "bot_context")
         print(f"   ✅ Bot context guardado ({len(json.dumps(bot_context))} chars)")
     except Exception as e:
         print(f"   ⚠️ Bot context: {e}")

@@ -18,6 +18,7 @@ data/.last_run
 data/outbox/
 data/attachments/
 data/shared/
+data/*/
 infra/*.pem
 infra/start_ec2.zip
 *.egg-info/

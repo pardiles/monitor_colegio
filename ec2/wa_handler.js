@@ -98,8 +98,22 @@ function loadUsers() {
 
 // Determinar sesión WAHA para un usuario
 function getSessionForUser(userCfg) {
-    // Por ahora cada usuario tiene su propia sesión WAHA con su ID
-    return userCfg.whatsapp?.waha_session || userCfg.id || 'default';
+    // Cada usuario tiene su propia sesión WAHA
+    // Prioridad: waha_session config > user_id > 'default'
+    if (userCfg.whatsapp?.waha_session) return userCfg.whatsapp.waha_session;
+    if (userCfg.id) return userCfg.id;
+    return 'default';
+}
+
+// Obtener todas las sesiones activas de WAHA
+async function getActiveSessions() {
+    try {
+        const result = await wahaRequest('GET', '/api/sessions');
+        if (result.status === 200 && Array.isArray(result.data)) {
+            return result.data.filter(s => s.status === 'WORKING').map(s => s.name);
+        }
+    } catch {}
+    return [];
 }
 
 // --- Bot respond (Gemini/Haiku) con contexto COMPLETO ---
@@ -287,6 +301,14 @@ function callHaiku(systemPrompt, question) {
 function handleWebhook(payload) {
     const event = payload.event;
 
+    // Session status changes
+    if (event === 'session.status') {
+        const session = payload.session || 'unknown';
+        const status = payload.payload?.status || '';
+        console.log(`[SESSION] ${session}: ${status}`);
+        return;
+    }
+
     if (event === 'message' || event === 'message.any') {
         const msg = payload.payload;
         if (!msg) return;
@@ -297,6 +319,7 @@ function handleWebhook(payload) {
         const chatId = msg.from;
         const body = msg.body || '';
         const isGroup = chatId.includes('@g.us');
+        const sessionName = payload.session || 'default';
 
         // Encontrar usuario por grupo o por sesión
         const users = loadUsers();
@@ -305,7 +328,9 @@ function handleWebhook(payload) {
         for (const u of users) {
             const groups = u.whatsapp_groups || [];
             const grupoMonitor = u.whatsapp?.grupo_monitor;
-            if (grupoMonitor === chatId || groups.some(g => g.id === chatId)) {
+            const userSession = getSessionForUser(u);
+            // Match by grupo monitor, whatsapp_groups, or session name
+            if (grupoMonitor === chatId || groups.some(g => g.id === chatId) || userSession === sessionName) {
                 userCfg = u;
                 break;
             }
@@ -427,23 +452,30 @@ async function handleSessionStart(body) {
     const { session, phone } = body;
     if (!session) return { ok: false, error: 'session requerido' };
 
-    // Verificar si sesión ya existe
+    // Verificar si sesión ya existe y está activa
     try {
         const check = await wahaRequest('GET', `/api/sessions/${session}`);
         if (check.status === 200 && check.data?.status === 'WORKING') {
-            return { ok: true, status: 'already_connected' };
+            return { ok: true, status: 'already_connected', session };
+        }
+        // Si existe pero no está WORKING, detenerla primero
+        if (check.status === 200) {
+            await wahaRequest('POST', '/api/sessions/stop', { name: session });
+            await new Promise(r => setTimeout(r, 1000));
         }
     } catch {}
 
-    // Crear sesión si no existe
+    // Crear sesión nueva
     try {
-        await wahaRequest('POST', '/api/sessions/start', {
+        const startBody = {
             name: session,
             config: {
                 webhooks: [{ url: 'http://localhost:8080/webhook', events: ['message', 'message.any', 'session.status'] }],
             },
-        });
-        return { ok: true, status: 'starting' };
+        };
+        const result = await wahaRequest('POST', '/api/sessions/start', startBody);
+        console.log(`[SESSION] Started ${session}: ${JSON.stringify(result.data).substring(0, 100)}`);
+        return { ok: true, status: 'starting', session };
     } catch (e) {
         return { ok: false, error: e.message };
     }
@@ -565,6 +597,11 @@ const server = http.createServer((req, res) => {
                 const result = await handleSessionStatus(query);
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify(result));
+            }
+            else if (pathname === '/api/sessions') {
+                const sessions = await getActiveSessions();
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ ok: true, sessions }));
             }
             else if (pathname === '/api/groups') {
                 const result = await handleListGroups(query);
