@@ -1,19 +1,17 @@
 """
-Configuración de proxy residencial — Webshare ISP (Static).
+Configuración de proxy residencial — Bright Data ISP (Static Chile).
 
-Webshare Static Residential:
-  - Chile disponible (316K+ IPs)
-  - IP fija permanente (no rota)
-  - $0.30/IP/mes ($6/mes por 20 IPs)
-  - 10 IPs gratis para trial
-  - HTTP + SOCKS5
-  - Bandwidth ilimitado
+Bright Data ISP Proxies:
+  - Chile IP fija permanente
+  - $1.80/IP/mes (plan 10 IPs = $18/mes)
+  - Bandwidth ilimitado incluido
+  - Misma IP para WAHA + SchoolNet + Extraprogramáticas
 
 Configurar en .env:
-  PROXY_HOST=p.webshare.io
-  PROXY_PORT=80
-  PROXY_USER=XXXXX
-  PROXY_PASS=XXXXX
+  PROXY_HOST=brd.superproxy.io
+  PROXY_PORT=33335
+  PROXY_USER=brd-customer-hl_439f135d-zone-monitor_colegio_cl
+  PROXY_PASS=u997kloltv8s
 
 La misma IP se usa para:
   - WAHA (WhatsApp) — sesión permanente 24/7
