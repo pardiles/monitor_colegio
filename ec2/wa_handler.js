@@ -314,7 +314,7 @@ function handleWebhook(payload) {
         saveJSON(statusFile, { session, status, updated: new Date().toISOString() });
         // Sync to S3 in background
         const { exec } = require('child_process');
-        exec(`aws s3 cp ${statusFile} s3://monitor-colegio-config-669294688330/whatsapp/sessions/${session}/status.json --region us-east-2`, (err) => {
+        exec(`/home/ubuntu/.local/bin/aws s3 cp ${statusFile} s3://monitor-colegio-config-669294688330/whatsapp/sessions/${session}/status.json --region us-east-2`, (err) => {
             if (err) console.log(`[SESSION] S3 sync error: ${err.message}`);
             else console.log(`[SESSION] ${session} status synced to S3: ${status}`);
         });
@@ -502,7 +502,7 @@ async function handleSessionStart(body) {
         fs.mkdirSync(path.join(DATA_DIR, 'sessions'), { recursive: true });
         saveJSON(statusFile, { session, status: 'STARTING', updated: new Date().toISOString() });
         const { exec } = require('child_process');
-        exec(`aws s3 cp ${statusFile} s3://monitor-colegio-config-669294688330/whatsapp/sessions/${session}/status.json --region us-east-2`);
+        exec(`/home/ubuntu/.local/bin/aws s3 cp ${statusFile} s3://monitor-colegio-config-669294688330/whatsapp/sessions/${session}/status.json --region us-east-2`);
         return { ok: true, status: 'starting', session };
     } catch (e) {
         return { ok: false, error: e.message };
