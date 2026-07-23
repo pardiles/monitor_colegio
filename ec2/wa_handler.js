@@ -303,11 +303,21 @@ function callHaiku(systemPrompt, question) {
 function handleWebhook(payload) {
     const event = payload.event;
 
-    // Session status changes
+    // Session status changes — save to file for S3 sync
     if (event === 'session.status') {
         const session = payload.session || 'unknown';
         const status = payload.payload?.status || '';
         console.log(`[SESSION] ${session}: ${status}`);
+        // Write status file (Lambda reads this via S3)
+        const statusFile = path.join(DATA_DIR, 'sessions', `${session}.json`);
+        fs.mkdirSync(path.join(DATA_DIR, 'sessions'), { recursive: true });
+        saveJSON(statusFile, { session, status, updated: new Date().toISOString() });
+        // Sync to S3 in background
+        const { exec } = require('child_process');
+        exec(`aws s3 cp ${statusFile} s3://monitor-colegio-config-669294688330/whatsapp/sessions/${session}/status.json --region us-east-2`, (err) => {
+            if (err) console.log(`[SESSION] S3 sync error: ${err.message}`);
+            else console.log(`[SESSION] ${session} status synced to S3: ${status}`);
+        });
         return;
     }
 
@@ -315,9 +325,13 @@ function handleWebhook(payload) {
         const msg = payload.payload;
         if (!msg) return;
 
+        const chatId = msg.from;
+        const body = msg.body || '';
+        const isGroup = chatId.includes('@g.us');
+        const sessionName = payload.session || 'default';
+
         // Ignorar mensajes propios EXCEPTO en grupo monitor (el apoderado pregunta desde su mismo teléfono)
         if (msg.fromMe) {
-            // Permitir fromMe en grupo monitor para que el bot responda preguntas del apoderado
             const users = loadUsers();
             let isMonitorGroup = false;
             for (const u of users) {
@@ -328,11 +342,6 @@ function handleWebhook(payload) {
             }
             if (!isMonitorGroup) return;
         }
-
-        const chatId = msg.from;
-        const body = msg.body || '';
-        const isGroup = chatId.includes('@g.us');
-        const sessionName = payload.session || 'default';
 
         // Encontrar usuario por grupo o por sesión
         const users = loadUsers();
@@ -488,6 +497,12 @@ async function handleSessionStart(body) {
         };
         const result = await wahaRequest('POST', '/api/sessions/start', startBody);
         console.log(`[SESSION] Started ${session}: ${JSON.stringify(result.data).substring(0, 100)}`);
+        // Sync status to S3
+        const statusFile = path.join(DATA_DIR, 'sessions', `${session}.json`);
+        fs.mkdirSync(path.join(DATA_DIR, 'sessions'), { recursive: true });
+        saveJSON(statusFile, { session, status: 'STARTING', updated: new Date().toISOString() });
+        const { exec } = require('child_process');
+        exec(`aws s3 cp ${statusFile} s3://monitor-colegio-config-669294688330/whatsapp/sessions/${session}/status.json --region us-east-2`);
         return { ok: true, status: 'starting', session };
     } catch (e) {
         return { ok: false, error: e.message };
