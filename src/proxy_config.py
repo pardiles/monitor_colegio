@@ -1,29 +1,29 @@
 """
-Configuración de proxy residencial — Bright Data.
+Configuración de proxy residencial — Webshare ISP (Static).
 
-Bright Data Residential Proxies:
-  - Chile disponible (pay-as-you-go $8/GB)
-  - Rotating con sticky session (misma IP por 30 min)
-  - ~250KB por usuario por ciclo = centavos/mes
+Webshare Static Residential:
+  - Chile disponible (316K+ IPs)
+  - IP fija permanente (no rota)
+  - $0.30/IP/mes ($6/mes por 20 IPs)
+  - 10 IPs gratis para trial
+  - HTTP + SOCKS5
+  - Bandwidth ilimitado
 
 Configurar en .env:
-  PROXY_HOST=brd.superproxy.io
-  PROXY_PORT=33335
-  PROXY_USER=brd-customer-XXXXX-zone-residential
+  PROXY_HOST=p.webshare.io
+  PROXY_PORT=80
+  PROXY_USER=XXXXX
   PROXY_PASS=XXXXX
-  PROXY_COUNTRY=cl
 
-El proxy se usa en:
-  - Playwright (SchoolNet login, extracurriculares) → proxy en browser context
-  - Requests (si se necesita) → proxies dict
+La misma IP se usa para:
+  - WAHA (WhatsApp) — sesión permanente 24/7
+  - SchoolNet (Playwright login)
+  - Extraprogramáticas (Cloudflare bypass)
 
-Solo scraping a sitios con Cloudflare/anti-bot necesita proxy.
-APIs legítimas (calendario JSON, Gmail API, WAHA) NO lo necesitan.
+1 IP fija por cada 10 usuarios (plan de escalamiento).
 """
 
 import os
-import hashlib
-import time
 
 
 def get_proxy_config():
@@ -34,7 +34,6 @@ def get_proxy_config():
     port = os.environ.get("PROXY_PORT", "")
     user = os.environ.get("PROXY_USER", "")
     password = os.environ.get("PROXY_PASS", "")
-    country = os.environ.get("PROXY_COUNTRY", "cl")
 
     if not host or not port:
         return None
@@ -44,17 +43,16 @@ def get_proxy_config():
         "port": int(port),
         "user": user,
         "password": password,
-        "country": country,
     }
 
 
 def get_playwright_proxy():
     """Obtener proxy formateado para Playwright browser context.
 
-    Bright Data format:
-      username: brd-customer-XXXXX-zone-residential-country-cl-session-XXX
+    Webshare format (simple auth):
+      server: http://p.webshare.io:80
+      username: XXXXX
       password: XXXXX
-      server: http://brd.superproxy.io:33335
 
     Uso:
         from src.proxy_config import get_playwright_proxy
@@ -65,17 +63,9 @@ def get_playwright_proxy():
     if not cfg:
         return None
 
-    # Sticky session: misma IP por 30 min (suficiente para cualquier scrape)
-    session_id = hashlib.md5(f"{int(time.time() // 1800)}".encode()).hexdigest()[:8]
-
-    username = cfg["user"]
-    if cfg["country"] and f"-country-{cfg['country']}" not in username:
-        username = f"{username}-country-{cfg['country']}"
-    username = f"{username}-session-{session_id}"
-
     return {
         "server": f"http://{cfg['host']}:{cfg['port']}",
-        "username": username,
+        "username": cfg["user"],
         "password": cfg["password"],
     }
 
@@ -92,15 +82,31 @@ def get_requests_proxy():
     if not cfg:
         return None
 
-    session_id = hashlib.md5(f"{int(time.time() // 1800)}".encode()).hexdigest()[:8]
-
-    username = cfg["user"]
-    if cfg["country"] and f"-country-{cfg['country']}" not in username:
-        username = f"{username}-country-{cfg['country']}"
-    username = f"{username}-session-{session_id}"
-
-    proxy_url = f"http://{username}:{cfg['password']}@{cfg['host']}:{cfg['port']}"
+    proxy_url = f"http://{cfg['user']}:{cfg['password']}@{cfg['host']}:{cfg['port']}"
     return {
         "http": proxy_url,
         "https": proxy_url,
+    }
+
+
+def get_docker_proxy_env():
+    """Obtener variables de entorno para Docker (WAHA).
+
+    Para configurar WAHA con proxy, agregar al docker run:
+      -e HTTP_PROXY=http://user:pass@host:port
+      -e HTTPS_PROXY=http://user:pass@host:port
+
+    Uso:
+        from src.proxy_config import get_docker_proxy_env
+        env = get_docker_proxy_env()
+        # docker run -e HTTP_PROXY={env['HTTP_PROXY']} ...
+    """
+    cfg = get_proxy_config()
+    if not cfg:
+        return None
+
+    proxy_url = f"http://{cfg['user']}:{cfg['password']}@{cfg['host']}:{cfg['port']}"
+    return {
+        "HTTP_PROXY": proxy_url,
+        "HTTPS_PROXY": proxy_url,
     }
