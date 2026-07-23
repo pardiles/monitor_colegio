@@ -363,10 +363,20 @@ function processOutbox() {
     const outboxDir = path.join(DATA_DIR, 'outbox');
     if (!fs.existsSync(outboxDir)) return;
 
-    const files = fs.readdirSync(outboxDir).filter(f => f.endsWith('.json'));
+    let files;
+    try {
+        files = fs.readdirSync(outboxDir).filter(f => f.endsWith('.json'));
+    } catch (e) {
+        console.log(`[OUTBOX] Cannot read dir: ${e.message}`);
+        return;
+    }
+
     for (const file of files) {
         const filePath = path.join(outboxDir, file);
-        const data = loadJSON(filePath, null);
+        let data;
+        try {
+            data = loadJSON(filePath, null);
+        } catch { continue; }
         if (!data) continue;
 
         if (data.status === 'pending' || (data.status === 'error' && (data._retries || 0) < 3)) {
@@ -376,8 +386,13 @@ function processOutbox() {
             }
 
             // Mark as processing immediately to avoid re-entry
-            data.status = 'processing';
-            saveJSON(filePath, data);
+            try {
+                data.status = 'processing';
+                saveJSON(filePath, data);
+            } catch (e) {
+                console.log(`[OUTBOX] Cannot write ${file}: ${e.message}`);
+                continue;
+            }
 
             // Determine which session to use
             const userId = data.user_id;
@@ -393,13 +408,13 @@ function processOutbox() {
                     }
                     data.status = 'sent';
                     data.sent_at = new Date().toISOString();
-                    saveJSON(filePath, data);
+                    try { saveJSON(filePath, data); } catch {}
                     // Cleanup after 5 min
                     setTimeout(() => { try { fs.unlinkSync(filePath); } catch {} }, 300000);
                 } catch (e) {
                     data.status = 'error';
                     data.error = e.message;
-                    saveJSON(filePath, data);
+                    try { saveJSON(filePath, data); } catch {}
                     console.log(`[OUTBOX] Error: ${e.message}`);
                 }
             })();
