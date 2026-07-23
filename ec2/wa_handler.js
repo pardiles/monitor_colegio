@@ -124,90 +124,92 @@ async function botRespond(chatId, question, userCfg) {
 
     const session = getSessionForUser(userCfg);
 
-    // Cargar bot_context completo (generado por main.py en cada corrida)
-    const botContextFile = path.join(DATA_DIR, `bot_context_${userCfg.id}.json`);
-    const botContext = loadJSON(botContextFile, null);
-
-    // Construir contexto rico
+    // Intentar RAG primero (chunks relevantes)
     let contextParts = [];
-    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Santiago' });
-    const dayName = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][new Date().getDay()];
-
-    contextParts.push(`Fecha: ${dayName} ${today}`);
-
-    // Hijos
-    const hijos = (userCfg.hijos || []).map(h => `${h.nombre} (${h.curso})`).join(', ');
-    if (hijos) contextParts.push(`Hijos: ${hijos}`);
-
-    // Extraprogramáticas activas
-    const extras = (userCfg.extraprogramaticas || [])
-        .filter(e => !e.fecha_inicio || e.fecha_inicio <= today)
-        .map(e => `${e.nombre}: ${e.dia} ${e.horario} (${e.hijo}) → sale ${e.hora_salida_real || ''}`)
-        .join('\n');
-    if (extras) contextParts.push(`Extraprogramáticas activas:\n${extras}`);
-
-    // Bot context completo (calendario, comunicaciones, etc.)
-    if (botContext) {
-        // Calendario persistente (próximos eventos)
-        if (botContext.calendario_persistente) {
-            const upcoming = botContext.calendario_persistente
-                .filter(e => e.fecha >= today)
-                .slice(0, 15)
-                .map(e => `${e.fecha} ${e.hora || ''}: ${e.titulo} (${e.hijo || 'todos'})`)
-                .join('\n');
-            if (upcoming) contextParts.push(`Calendario próximo:\n${upcoming}`);
+    let ragUsed = false;
+    try {
+        const ragResp = await new Promise((resolve) => {
+            const ragBody = JSON.stringify({ user_id: userCfg.id, question, n_results: 8 });
+            const req = http.request({
+                hostname: 'localhost', port: 8086,
+                path: '/query', method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            }, (res) => {
+                let data = '';
+                res.on('data', c => data += c);
+                res.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve(null); } });
+            });
+            req.on('error', () => resolve(null));
+            req.setTimeout(3000, () => { req.destroy(); resolve(null); });
+            req.write(ragBody);
+            req.end();
+        });
+        if (ragResp && ragResp.ok && ragResp.chunks && ragResp.chunks.length > 0) {
+            contextParts = ragResp.chunks;
+            ragUsed = true;
+            console.log(`[BOT/RAG] ${userCfg.id}: ${ragResp.chunks.length} chunks found`);
         }
+    } catch {}
 
-        // Horarios
-        if (botContext.horarios) {
-            contextParts.push(`Horarios:\n${JSON.stringify(botContext.horarios).substring(0, 2000)}`);
-        }
+    // Fallback: cargar bot_context completo y truncar
+    if (!ragUsed) {
+        const botContextFile = path.join(DATA_DIR, `bot_context_${userCfg.id}.json`);
+        const botContext = loadJSON(botContextFile, null);
+        const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Santiago' });
+        const dayName = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][new Date().getDay()];
 
-        // Comunicaciones recientes
-        if (botContext.comunicaciones) {
-            const comms = JSON.stringify(botContext.comunicaciones).substring(0, 1500);
-            contextParts.push(`Comunicaciones recientes:\n${comms}`);
-        }
+        contextParts.push(`Fecha: ${dayName} ${today}`);
 
-        // Emails recientes
-        if (botContext.emails) {
-            const emails = botContext.emails.slice(0, 5)
-                .map(e => `${e.date || ''}: ${e.subject} — ${(e.body || '').substring(0, 150)}`)
-                .join('\n');
-            if (emails) contextParts.push(`Emails recientes:\n${emails}`);
-        }
+        // Hijos
+        const hijos = (userCfg.hijos || []).map(h => `${h.nombre} (${h.curso})`).join(', ');
+        if (hijos) contextParts.push(`Hijos: ${hijos}`);
 
-        // Casino
-        if (botContext.casino_hoy) {
-            contextParts.push(`Casino hoy: ${botContext.casino_hoy}`);
-        }
+        // Extraprogramáticas activas
+        const extras = (userCfg.extraprogramaticas || [])
+            .filter(e => !e.fecha_inicio || e.fecha_inicio <= today)
+            .map(e => `${e.nombre}: ${e.dia} ${e.horario} (${e.hijo}) → sale ${e.hora_salida_real || ''}`)
+            .join('\n');
+        if (extras) contextParts.push(`Extraprogramáticas activas:\n${extras}`);
 
-        // Pagos
-        if (botContext.pagos) {
-            contextParts.push(`Pagos: ${JSON.stringify(botContext.pagos).substring(0, 500)}`);
-        }
-
-        // Notas (últimas)
-        for (const hijo of (userCfg.hijos || [])) {
-            const nombre = hijo.nombre.toLowerCase();
-            const notas = botContext[`calificaciones_${nombre}`];
-            if (notas) {
-                contextParts.push(`Notas ${hijo.nombre}: ${JSON.stringify(notas).substring(0, 800)}`);
+        // Bot context completo (calendario, comunicaciones, etc.)
+        if (botContext) {
+            if (botContext.calendario_persistente) {
+                const upcoming = botContext.calendario_persistente
+                    .filter(e => e.fecha >= today)
+                    .slice(0, 15)
+                    .map(e => `${e.fecha} ${e.hora || ''}: ${e.titulo} (${e.hijo || 'todos'})`)
+                    .join('\n');
+                if (upcoming) contextParts.push(`Calendario próximo:\n${upcoming}`);
+            }
+            if (botContext.horarios) {
+                contextParts.push(`Horarios:\n${JSON.stringify(botContext.horarios).substring(0, 2000)}`);
+            }
+            if (botContext.comunicaciones) {
+                contextParts.push(`Comunicaciones recientes:\n${JSON.stringify(botContext.comunicaciones).substring(0, 1500)}`);
+            }
+            if (botContext.emails) {
+                const emails = botContext.emails.slice(0, 5)
+                    .map(e => `${e.date || ''}: ${e.subject} — ${(e.body || '').substring(0, 150)}`)
+                    .join('\n');
+                if (emails) contextParts.push(`Emails recientes:\n${emails}`);
+            }
+            if (botContext.casino_hoy) {
+                contextParts.push(`Casino hoy: ${botContext.casino_hoy}`);
+            }
+            if (botContext.pagos) {
+                contextParts.push(`Pagos: ${JSON.stringify(botContext.pagos).substring(0, 500)}`);
+            }
+            for (const hijo of (userCfg.hijos || [])) {
+                const nombre = hijo.nombre.toLowerCase();
+                const notas = botContext[`calificaciones_${nombre}`];
+                if (notas) contextParts.push(`Notas ${hijo.nombre}: ${JSON.stringify(notas).substring(0, 800)}`);
+                const asist = botContext[`asistencia_${nombre}`];
+                if (asist) contextParts.push(`Asistencia ${hijo.nombre}: ${JSON.stringify(asist).substring(0, 400)}`);
             }
         }
-
-        // Asistencia
-        for (const hijo of (userCfg.hijos || [])) {
-            const nombre = hijo.nombre.toLowerCase();
-            const asist = botContext[`asistencia_${nombre}`];
-            if (asist) {
-                contextParts.push(`Asistencia ${hijo.nombre}: ${JSON.stringify(asist).substring(0, 400)}`);
-            }
-        }
-    }
+    } // end !ragUsed
 
     const context = contextParts.join('\n\n');
-    // Limitar contexto total a ~6000 chars para no exceder tokens
     const truncatedContext = context.substring(0, 6000);
 
     const systemPrompt = `Eres un asistente de WhatsApp que responde preguntas de un apoderado sobre el colegio de sus hijos.

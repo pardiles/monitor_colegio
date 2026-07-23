@@ -29,8 +29,14 @@ aws s3 sync s3://monitor-colegio-config-669294688330/config/tokens/ /opt/monitor
 # WAHA captura mensajes en tiempo real via webhook → wa_handler.js
 # No se necesita fetch_whatsapp.js (era de Baileys batch)
 
-# xvfb-run para Cuaderno Rojo (Cloudflare requiere browser headed)
-xvfb-run -a python3 main.py $MODE >> /var/log/monitor-colegio.log 2>&1
+# Intentar via microservicios (orchestrator), fallback a main.py
+if curl -s http://localhost:8083/health > /dev/null 2>&1; then
+  echo "$(TZ='America/Santiago' date) - Usando orchestrator" >> /var/log/monitor-colegio.log
+  python3 services/run_cycle.py $MODE >> /var/log/monitor-colegio.log 2>&1
+else
+  echo "$(TZ='America/Santiago' date) - Orchestrator no disponible, usando main.py" >> /var/log/monitor-colegio.log
+  xvfb-run -a python3 main.py $MODE >> /var/log/monitor-colegio.log 2>&1
+fi
 
 mkdir -p data
 date > "$STATE_FILE"

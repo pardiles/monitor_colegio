@@ -959,6 +959,17 @@ def ingest_for_user(user_cfg: dict) -> dict:
         save_bot_context(user_id, bot_context)
         update_meta(user_id, "bot_context")
         print(f"   ✅ Bot context guardado ({len(json.dumps(bot_context))} chars)")
+
+        # Indexar en RAG (si el servicio está disponible)
+        try:
+            import requests as _req
+            _rag_url = os.environ.get("RAG_URL", "http://localhost:8086")
+            r = _req.post(f"{_rag_url}/index/{user_id}", timeout=10)
+            if r.status_code == 200:
+                rag_result = r.json()
+                print(f"   ✅ RAG indexado: {rag_result.get('chunks', 0)} chunks ({rag_result.get('backend', '?')})")
+        except Exception:
+            pass  # RAG opcional — si no está corriendo, no importa
     except Exception as e:
         print(f"   ⚠️ Bot context: {e}")
 
