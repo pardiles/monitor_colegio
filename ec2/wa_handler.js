@@ -408,20 +408,27 @@ function handleWebhook(payload) {
             console.log(`[${userCfg.id}][${label}] ${msg.notifyName}: ${body.substring(0, 50)}`);
         }
 
-        // Guardar instrucciones en grupo monitor (mensajes que no son del bot)
+        // Guardar instrucciones en grupo monitor (mensajes que no son del bot, >10 chars)
         const grupoMonitor = userCfg.whatsapp?.grupo_monitor;
-        if (chatId === grupoMonitor && body && !body.startsWith('🤖') && !body.startsWith('📋') && !body.startsWith('📬')) {
-            const monitorFile = path.join(DATA_DIR, `monitor_inputs_${userCfg.id}.json`);
-            const inputs = loadJSON(monitorFile, []);
-            inputs.push({
-                from: msg.notifyName || 'unknown',
-                body: body.substring(0, 500),
-                date: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Santiago' }),
-                time: new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Santiago' }),
-            });
-            // Keep last 20 instructions
-            if (inputs.length > 20) inputs.splice(0, inputs.length - 20);
-            saveJSON(monitorFile, inputs);
+        if (chatId === grupoMonitor && body && !body.startsWith('🤖') && !body.startsWith('📋') && !body.startsWith('📬') && !body.startsWith('📝')) {
+            // Solo guardar instrucciones con contenido real (>10 chars, no es pregunta)
+            if (body.length > 10 && !body.includes('?')) {
+                const session = getSessionForUser(userCfg);
+                const monitorFile = path.join(DATA_DIR, `monitor_inputs_${userCfg.id}.json`);
+                const inputs = loadJSON(monitorFile, []);
+                inputs.push({
+                    from: msg.notifyName || 'unknown',
+                    body: body.substring(0, 500),
+                    date: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Santiago' }),
+                    time: new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Santiago' }),
+                });
+                // Keep last 20 instructions
+                if (inputs.length > 20) inputs.splice(0, inputs.length - 20);
+                saveJSON(monitorFile, inputs);
+                // Confirmar con "Anotado"
+                sendMessage(chatId, '📝 Anotado', session);
+                console.log(`[${userCfg.id}][INSTRUCCION] ${body.substring(0, 50)}`);
+            }
         }
 
         // Bot respond (solo en grupo monitor y si tiene ?)
