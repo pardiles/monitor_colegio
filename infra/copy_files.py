@@ -11,7 +11,9 @@ files = [
     ('main.py', '/opt/monitor-colegio/main.py'),
     ('src/processor/summarizer.py', '/opt/monitor-colegio/src/processor/summarizer.py'),
     ('src/calendar_store.py', '/opt/monitor-colegio/src/calendar_store.py'),
-    ('ec2/fetch_whatsapp.js', '/opt/monitor-colegio/fetch_whatsapp.js'),
+    ('ec2/wa_handler.js', '/opt/monitor-colegio/wa_handler.js'),
+    ('ec2/send_whatsapp.js', '/opt/monitor-colegio/send_whatsapp.js'),
+    ('ec2/run.sh', '/opt/monitor-colegio/run.sh'),
 ]
 
 for local, remote in files:

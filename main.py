@@ -355,10 +355,10 @@ def generate_and_send(mode: str, data: dict, is_weekly: bool = False,
     with open(msg_file, "w", encoding="utf-8") as f:
         json.dump({"mensaje": message, "mode": mode, "user_id": user_id}, f, ensure_ascii=False)
 
-    # Enviar por WhatsApp via Node.js (Baileys en EC2)
+    # Enviar por WhatsApp via outbox → wa_handler.js (WAHA)
     print("\n📱 Enviando por WhatsApp...")
     import subprocess
-    send_script = "send_whatsapp.js"  # En EC2 es el de Baileys
+    send_script = "send_whatsapp.js"  # Escribe outbox, wa_handler lo envía via WAHA
     result = subprocess.run(
         ["node", send_script, user_id],
         capture_output=True, text=True, timeout=60
@@ -441,16 +441,7 @@ def _check_capacity(users: list):
         print(f"\n🚨🚨🚨 ALERTA: {len(users)} usuarios excede el máximo de {MAX_USERS_PER_INSTANCE} por instancia!")
         print(f"   Crear una nueva instancia EC2 para los usuarios adicionales.")
         print(f"   Usuarios actuales: {[u['id'] for u in users]}")
-        # Enviar alerta por WhatsApp a admin (Pablo)
-        try:
-            alert_file = os.path.join("data", "mensaje_enviar_pablo.json")
-            alert_msg = f"🚨 ALERTA MONITOR: {len(users)} usuarios registrados, máximo es {MAX_USERS_PER_INSTANCE}. Crear nueva instancia EC2."
-            with open(alert_file, "w", encoding="utf-8") as f:
-                json.dump({"mensaje": alert_msg, "mode": "alert", "user_id": "pablo"}, f, ensure_ascii=False)
-            import subprocess
-            subprocess.run(["node", "send_whatsapp.js", "pablo"], capture_output=True, text=True, timeout=60)
-        except Exception:
-            pass
+        # Solo log, NO enviar a WhatsApp (no alarmar a los usuarios)
 
 
 def ingest_for_user(user_cfg: dict) -> dict:
@@ -683,7 +674,7 @@ def ingest_for_user(user_cfg: dict) -> dict:
                     data[f"whatsapp_{label}"] = all_wa[label]
         else:
             # Método 2: usar whatsapp_groups de la landing (tiene id, name, hijo)
-            # El wa_listener guarda con labels derivadas del nombre del grupo
+            # El wa_handler guarda con labels derivadas del nombre del grupo
             wa_groups = user_cfg.get("whatsapp_groups", [])
             if wa_groups:
                 # Mapear: buscar labels en all_wa que coincidan con los grupos configurados

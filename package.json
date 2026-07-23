@@ -1,17 +1,15 @@
 {
   "name": "monitor_colegio",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "version": "2.0.0",
+  "description": "Monitor Colegio - Resúmenes diarios por WhatsApp via WAHA",
+  "main": "ec2/wa_handler.js",
   "scripts": {
+    "start": "node ec2/wa_handler.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
-  "dependencies": {
-    "qrcode-terminal": "^0.12.0",
-    "whatsapp-web.js": "^1.34.7"
-  }
+  "dependencies": {}
 }

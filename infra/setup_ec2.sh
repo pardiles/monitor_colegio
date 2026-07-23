@@ -1,96 +1,91 @@
 #!/bin/bash
-# Setup completo de la EC2 para Monitor Colegio
+# Setup completo de la EC2 para Monitor Colegio (WAHA + wa_handler)
 set -e
 
 echo "=== 1. Instalar dependencias del sistema ==="
-sudo dnf install -y python3.11 python3.11-pip nodejs20 git nss atk cups-libs libdrm libXcomposite libXdamage libXrandr mesa-libgbm pango alsa-lib
+sudo apt-get update
+sudo apt-get install -y python3 python3-pip nodejs npm docker.io xvfb
 
 echo "=== 2. Crear directorio del proyecto ==="
 sudo mkdir -p /opt/monitor-colegio
-sudo chown ec2-user:ec2-user /opt/monitor-colegio
+sudo chown ubuntu:ubuntu /opt/monitor-colegio
 
 echo "=== 3. Instalar dependencias Python ==="
 cd /opt/monitor-colegio
-pip3.11 install --user anthropic playwright google-auth google-auth-oauthlib google-api-python-client python-dotenv requests python-dateutil scrapling
+pip3 install --user anthropic playwright google-auth google-auth-oauthlib google-api-python-client python-dotenv requests python-dateutil google-genai
 
 echo "=== 4. Instalar Playwright browsers ==="
-python3.11 -m playwright install chromium
+python3 -m playwright install chromium
 
-echo "=== 5. Instalar dependencias Node ==="
-cd /opt/monitor-colegio
-npm init -y 2>/dev/null
-npm install whatsapp-web.js
+echo "=== 5. Instalar WAHA (Docker) ==="
+sudo docker pull devlikeapro/waha:latest
+sudo docker run -d \
+  --name waha \
+  --network=host \
+  -e WHATSAPP_DEFAULT_ENGINE=NOWEB \
+  -e WAHA_DASHBOARD_ENABLED=true \
+  -e WHATSAPP_API_KEY=monitor2026 \
+  -v /opt/monitor-colegio/waha_data:/app/.sessions \
+  devlikeapro/waha:latest
 
-echo "=== 6. Instalar Puppeteer Chrome para whatsapp-web.js ==="
-npx puppeteer browsers install chrome
+echo "=== 6. Configurar servicios systemd ==="
 
-echo "=== 7. Crear script de ejecución ==="
-cat > /opt/monitor-colegio/run.sh << 'RUNEOF'
-#!/bin/bash
-cd /opt/monitor-colegio
-export PATH="/home/ec2-user/.local/bin:$PATH"
-export PUPPETEER_EXECUTABLE_PATH="/home/ec2-user/.cache/puppeteer/chrome/linux-*/chrome-linux64/chrome"
-
-# Determinar modo AM o PM (Chile/Santiago = UTC-4 en invierno)
-HOUR=$(TZ='America/Santiago' date +%H)
-if [ "$HOUR" -lt 12 ]; then
-  MODE="morning"
-else
-  MODE="evening"
-fi
-
-# Determinar si es primera ejecución
-STATE_FILE="/opt/monitor-colegio/data/.last_run"
-if [ ! -f "$STATE_FILE" ]; then
-  WA_MODE="week"
-  echo "Primera ejecución - leyendo última semana"
-else
-  WA_MODE="daily"
-fi
-
-echo "$(TZ='America/Santiago' date) - Modo: $MODE | WhatsApp: $WA_MODE"
-
-# 1. Leer WhatsApp
-node fetch_whatsapp.js $WA_MODE 2>&1 | tee -a /var/log/monitor-colegio.log
-
-# 2. Ejecutar ingesta + resumen + envio
-python3.11 main.py $MODE 2>&1 | tee -a /var/log/monitor-colegio.log
-
-# 3. Marcar ejecución exitosa
-mkdir -p data
-date > "$STATE_FILE"
-
-echo "$(TZ='America/Santiago' date) - Finalizado. Apagando..."
-
-# 4. Apagar la instancia
-TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
-INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
-aws ec2 stop-instances --instance-ids $INSTANCE_ID --region us-east-2
-RUNEOF
-
-chmod +x /opt/monitor-colegio/run.sh
-
-echo "=== 8. Configurar servicio systemd ==="
-sudo tee /etc/systemd/system/monitor-colegio.service << 'SVCEOF'
+# Servicio oneshot: run.sh (scraping + resumen, ejecuta al boot via cron/EventBridge)
+sudo tee /etc/systemd/system/monitor-colegio.service << 'EOF'
 [Unit]
-Description=Monitor Colegio
+Description=Monitor Colegio - Ingesta y Resumen
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=ec2-user
-ExecStartPre=/bin/sleep 10
+User=ubuntu
+ExecStartPre=/bin/sleep 15
 ExecStart=/opt/monitor-colegio/run.sh
 WorkingDirectory=/opt/monitor-colegio
-Environment=HOME=/home/ec2-user
+Environment=HOME=/home/ubuntu
 TimeoutStartSec=600
 
 [Install]
 WantedBy=multi-user.target
-SVCEOF
+EOF
+
+# Servicio persistente: wa_handler.js (webhook receiver + outbox sender via WAHA)
+sudo tee /etc/systemd/system/wa-handler.service << 'EOF'
+[Unit]
+Description=Monitor Colegio - WA Handler (WAHA webhook + outbox)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+ExecStart=/usr/bin/node /opt/monitor-colegio/wa_handler.js
+WorkingDirectory=/opt/monitor-colegio
+Environment=HOME=/home/ubuntu
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
 
 sudo systemctl daemon-reload
 sudo systemctl enable monitor-colegio.service
+sudo systemctl enable wa-handler.service
+sudo systemctl start wa-handler.service
 
+echo "=== 7. Configurar webhook en WAHA ==="
+# Wait for WAHA to start
+sleep 5
+curl -X PUT http://localhost:3000/api/default/webhook \
+  -H "Content-Type: application/json" \
+  -H "X-Api-Key: monitor2026" \
+  -d '{"url": "http://localhost:8080/webhook", "events": ["message", "message.any"]}'
+
+echo ""
 echo "=== SETUP COMPLETO ==="
+echo "  - WAHA: localhost:3000 (Docker, NOWEB engine)"
+echo "  - wa_handler: localhost:8080 (webhook receiver + outbox)"
+echo "  - monitor-colegio.service: oneshot (scraping + resumen)"
+echo "  - wa-handler.service: persistent (webhook + envío)"

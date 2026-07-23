@@ -26,7 +26,8 @@ aws s3 sync s3://monitor-colegio-config-669294688330/config/users/ /opt/monitor-
 # Sync tokens Gmail desde S3 (generados por la landing OAuth)
 aws s3 sync s3://monitor-colegio-config-669294688330/config/tokens/ /opt/monitor-colegio/config/tokens/ >> /var/log/monitor-colegio.log 2>&1
 
-node fetch_whatsapp.js $WA_MODE >> /var/log/monitor-colegio.log 2>&1
+# WAHA captura mensajes en tiempo real via webhook → wa_handler.js
+# No se necesita fetch_whatsapp.js (era de Baileys batch)
 
 # xvfb-run para Cuaderno Rojo (Cloudflare requiere browser headed)
 xvfb-run -a python3 main.py $MODE >> /var/log/monitor-colegio.log 2>&1

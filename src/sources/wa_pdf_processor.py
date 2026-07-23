@@ -1,6 +1,6 @@
 """
 Procesador de PDFs recibidos por WhatsApp.
-Lee los PDFs descargados por wa_listener (en data/attachments/) y extrae su contenido
+Lee los PDFs descargados por wa_handler (en data/attachments/) y extrae su contenido
 para incluirlo en el bot_context y el RAG.
 
 Los PDFs del colegio suelen ser:

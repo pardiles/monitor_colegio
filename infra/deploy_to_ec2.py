@@ -45,7 +45,7 @@ print(f"Deploying to {IP} ({INSTANCE_ID})")
 print("\n1. Copiando código fuente...")
 scp_recursive('src', '/opt/monitor-colegio/')
 scp_files(['main.py', '.env', 'credentials.json', 'token.json'], '/opt/monitor-colegio/')
-scp_files(['ec2/fetch_whatsapp.js', 'ec2/send_whatsapp.js', 'ec2/run.sh'], '/opt/monitor-colegio/')
+scp_files(['ec2/wa_handler.js', 'ec2/send_whatsapp.js', 'ec2/run.sh'], '/opt/monitor-colegio/')
 scp_recursive('data', '/opt/monitor-colegio/')
 print("   OK")
 
@@ -59,9 +59,9 @@ print("\n3. Instalando Playwright Chromium...")
 out = ssh_cmd("python3.11 -m playwright install chromium 2>&1 | tail -2", timeout=120)
 print(f"   {out.strip()[-80:]}")
 
-# 4. Instalar deps Node + Baileys
-print("\n4. Instalando Node deps + Baileys...")
-out = ssh_cmd("cd /opt/monitor-colegio && npm init -y 2>/dev/null && npm install @whiskeysockets/baileys qrcode-terminal 2>&1 | tail -3", timeout=120)
+# 4. Instalar deps Node (WAHA handles WhatsApp, no Baileys needed)
+print("\n4. Node deps (mínimo)...")
+out = ssh_cmd("cd /opt/monitor-colegio && npm init -y 2>/dev/null", timeout=120)
 print(f"   {out.strip()[-80:]}")
 
 # 5. Configurar run.sh
@@ -71,8 +71,8 @@ print(f"   {out.strip()}")
 
 # 6. Verificar archivos
 print("\n6. Verificando archivos...")
-out = ssh_cmd("ls /opt/monitor-colegio/main.py /opt/monitor-colegio/.env /opt/monitor-colegio/src/processor/summarizer.py /opt/monitor-colegio/fetch_whatsapp.js /opt/monitor-colegio/send_whatsapp.js 2>&1")
+out = ssh_cmd("ls /opt/monitor-colegio/main.py /opt/monitor-colegio/.env /opt/monitor-colegio/src/processor/summarizer.py /opt/monitor-colegio/wa_handler.js /opt/monitor-colegio/send_whatsapp.js 2>&1")
 print(f"   {out.strip()}")
 
 print(f"\n✅ Deploy completo! EC2: {IP}")
-print("Siguiente: escanear QR de WhatsApp en la EC2 y luego ejecutar test")
+print("WAHA (Docker) maneja WhatsApp. wa_handler.js recibe webhooks + envía outbox.")

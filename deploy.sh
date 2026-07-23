@@ -36,7 +36,8 @@ cd "$(dirname "$0")"
 
 # Subir archivos a S3 temporalmente y luego copiar a EC2
 aws s3 cp main.py s3://$S3_BUCKET/deploy/main.py --region $REGION
-aws s3 cp ec2/wa_listener.js s3://$S3_BUCKET/deploy/wa_listener.js --region $REGION
+aws s3 cp ec2/wa_handler.js s3://$S3_BUCKET/deploy/wa_handler.js --region $REGION
+aws s3 cp ec2/send_whatsapp.js s3://$S3_BUCKET/deploy/send_whatsapp.js --region $REGION
 aws s3 cp ec2/run.sh s3://$S3_BUCKET/deploy/run.sh --region $REGION
 aws s3 cp src/sources/gmail_source.py s3://$S3_BUCKET/deploy/src/sources/gmail_source.py --region $REGION
 aws s3 cp src/sources/wa_pdf_processor.py s3://$S3_BUCKET/deploy/src/sources/wa_pdf_processor.py --region $REGION
@@ -58,7 +59,7 @@ aws ssm send-command \
         \"chmod +x ec2/run.sh run.sh 2>/dev/null\",
         \"chown -R ubuntu:ubuntu $EC2_PATH\",
         \"echo '✅ Archivos desplegados'\",
-        \"ls -la main.py ec2/wa_listener.js ec2/run.sh src/sources/gmail_source.py src/sources/wa_pdf_processor.py\"
+        \"ls -la main.py wa_handler.js send_whatsapp.js run.sh src/sources/gmail_source.py src/sources/wa_pdf_processor.py\"
     ]" \
     --region $REGION \
     --output text \
@@ -88,9 +89,9 @@ echo "========================================"
 echo "  POST-DEPLOY"
 echo "========================================"
 echo ""
-echo "1. Reiniciar wa_listener:"
+echo "1. Reiniciar wa_handler:"
 echo "   aws ssm send-command --instance-ids $INSTANCE_ID --document-name AWS-RunShellScript \\"
-echo "     --parameters commands=\"[\\\"sudo systemctl restart wa_listener\\\"]\" --region $REGION"
+echo "     --parameters commands=\"[\\\"sudo systemctl restart wa-handler\\\"]\" --region $REGION"
 echo ""
 echo "2. Re-autorizar Gmail desde la landing (para que el token incluya client_id/secret)"
 echo "   → Ir a la landing → sección Gmail → 'Vincular Gmail' para cada usuario"

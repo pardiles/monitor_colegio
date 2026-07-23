@@ -1,6 +1,6 @@
 /**
- * Envía resumen por WhatsApp usando la sesión del wa_listener.
- * Escribe un archivo "outbox" que wa_listener detecta y envía.
+ * Envía resumen por WhatsApp escribiendo un archivo outbox.
+ * wa_handler.js (WAHA) detecta el outbox y envía via API REST.
  * Sale inmediatamente después de escribir — no espera confirmación.
  * 
  * Uso:
@@ -70,7 +70,7 @@ if (!messageData || !messageData.mensaje) {
 const mensaje = messageData.mensaje.replace(/\*\*/g, '*');
 console.log(`[${userId}] Mensaje listo (${mensaje.length} chars), escribiendo outbox...`);
 
-// Escribir en outbox para que wa_listener lo recoja
+// Escribir en outbox para que wa_handler.js (WAHA) lo recoja
 fs.mkdirSync(OUTBOX_DIR, { recursive: true, mode: 0o777 });
 const outboxFile = path.join(OUTBOX_DIR, `${userId}_${Date.now()}.json`);
 const outboxData = {
@@ -84,7 +84,7 @@ fs.writeFileSync(outboxFile, JSON.stringify(outboxData, null, 2), { mode: 0o666 
 // Force permissions (umask may override mode)
 try { fs.chmodSync(outboxFile, 0o666); } catch {}
 console.log(`[${userId}] ✅ Outbox escrito: ${path.basename(outboxFile)}`);
-console.log(`[${userId}] wa_listener lo enviará en ~3s`);
+console.log(`[${userId}] wa_handler lo enviará en ~3s via WAHA`);
 
-// Salir inmediatamente — wa_listener se encarga del envío
+// Salir inmediatamente — wa_handler se encarga del envío
 process.exit(0);

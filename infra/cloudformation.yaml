@@ -89,10 +89,10 @@ Resources:
           
           echo "$(date) - Ejecutando modo: $MODE"
           
-          # 1. Leer WhatsApp
-          node fetch_whatsapp.js daily 2>&1 | tee -a /var/log/monitor-colegio.log
+          # WAHA captura mensajes en tiempo real via webhook → wa_handler.js
+          # No se necesita fetch_whatsapp.js (era de Baileys batch)
           
-          # 2. Ejecutar ingesta + resumen + envio
+          # 1. Ejecutar ingesta + resumen + envio
           python3.11 main.py $MODE 2>&1 | tee -a /var/log/monitor-colegio.log
           
           echo "$(date) - Finalizado. Apagando instancia..."
