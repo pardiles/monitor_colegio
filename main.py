@@ -488,16 +488,19 @@ def ingest_for_user(user_cfg: dict) -> dict:
                 sn = SchoolNetClient(sn_user, sn_pass)
                 if sn.login():
                     # Extraprogramáticas PRIMERO (SSO caduca rápido)
-                    try:
-                        sso_url = sn.get_extracurriculares_url()
-                        if sso_url:
-                            from src.sources.extracurriculares import fetch_extracurriculares as fetch_extras
-                            extras_raw = fetch_extras(sso_url)
+                    # Solo scrappear si NO hay datos en config (cambian 1x/semestre)
+                    user_extras = user_cfg.get("extraprogramaticas", [])
+                    if not user_extras:
+                        try:
+                            from src.sources.extracurriculares import fetch_extracurriculares_browser
+                            extras_raw = fetch_extracurriculares_browser(sn_user, sn_pass)
                             if extras_raw:
-                                data["extraprogramaticas_schoolnet"] = [vars(e) for e in extras_raw]
-                                print(f"   ✅ Extraprogramáticas: {len(extras_raw)}")
-                    except Exception as e:
-                        print(f"   ⚠️ Extraprogramáticas: {e}")
+                                data["extraprogramaticas_schoolnet"] = [vars(e) if hasattr(e, '__dict__') else e for e in extras_raw]
+                                print(f"   ✅ Extraprogramáticas scrapeadas: {len(extras_raw)}")
+                        except Exception as e:
+                            print(f"   ⚠️ Extraprogramáticas: {e}")
+                    else:
+                        print(f"   ✅ Extraprogramáticas desde config: {len(user_extras)}")
 
                     # Comunicaciones (compartido entre hijos)
                     data["comunicaciones"] = sn.get_comunicaciones()
