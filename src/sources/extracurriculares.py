@@ -37,6 +37,12 @@ def fetch_extracurriculares_browser(username: str, password: str, debug_dir: str
     Scrape extracurriculares usando browser real.
     Login en SchoolNet → redirect SSO → extracurriculares.colegium.com
     
+    NOTA: Este scraper debe ejecutarse desde IP residencial (IPRoyal) cuando
+    esté disponible el proxy. Cloudflare bloquea POSTs desde IPs de datacenter
+    ~50% de las veces. Con IP residencial chilena, el bypass es consistente.
+    Plan: asignar IP residencial estática por usuario (misma IP para SchoolNet
+    y extracurriculares, para que Cloudflare vea un "hogar" consistente).
+    
     Args:
         username: SchoolNet user
         password: SchoolNet pass
