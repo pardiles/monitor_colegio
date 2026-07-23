@@ -44,6 +44,13 @@ def get_proxy_config():
 def get_playwright_proxy():
     """Obtener proxy formateado para Playwright browser context.
     
+    Soporta 2 modos:
+    - Static residential: IP fija permanente
+    - Rotating residential (sticky): IP fija por 30 min (más barato, Chile disponible)
+    
+    Para IPRoyal rotating con sticky session, el username incluye parámetros:
+      usuario_country-cl_session-XXXX_lifetime-30m
+    
     Uso:
         from src.proxy_config import get_playwright_proxy
         proxy = get_playwright_proxy()
@@ -53,9 +60,20 @@ def get_playwright_proxy():
     if not cfg:
         return None
 
+    username = cfg["user"]
+    # Si tiene country, agregarlo al username (formato IPRoyal rotating)
+    if cfg["country"] and "_country-" not in username:
+        username = f"{username}_country-{cfg['country']}"
+    # Agregar sticky session si no está ya (mantiene IP por 30 min)
+    if "_session-" not in username:
+        import hashlib, time
+        # Session ID basado en la hora (cambia cada 30 min)
+        session_id = hashlib.md5(f"{int(time.time() // 1800)}".encode()).hexdigest()[:8]
+        username = f"{username}_session-{session_id}_lifetime-30m"
+
     return {
         "server": f"http://{cfg['host']}:{cfg['port']}",
-        "username": f"{cfg['user']}_country-{cfg['country']}",
+        "username": username,
         "password": cfg["password"],
     }
 
@@ -72,7 +90,15 @@ def get_requests_proxy():
     if not cfg:
         return None
 
-    proxy_url = f"http://{cfg['user']}_country-{cfg['country']}:{cfg['password']}@{cfg['host']}:{cfg['port']}"
+    username = cfg["user"]
+    if cfg["country"] and "_country-" not in username:
+        username = f"{username}_country-{cfg['country']}"
+    if "_session-" not in username:
+        import hashlib, time
+        session_id = hashlib.md5(f"{int(time.time() // 1800)}".encode()).hexdigest()[:8]
+        username = f"{username}_session-{session_id}_lifetime-30m"
+
+    proxy_url = f"http://{username}:{cfg['password']}@{cfg['host']}:{cfg['port']}"
     return {
         "http": proxy_url,
         "https": proxy_url,
