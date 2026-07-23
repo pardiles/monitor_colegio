@@ -318,6 +318,32 @@ function handleWebhook(payload) {
             if (err) console.log(`[SESSION] S3 sync error: ${err.message}`);
             else console.log(`[SESSION] ${session} status synced to S3: ${status}`);
         });
+
+        // If SCAN_QR_CODE, also fetch and save QR image to S3
+        if (status === 'SCAN_QR_CODE') {
+            setTimeout(async () => {
+                try {
+                    const qrResult = await wahaRequest('GET', `/api/${session}/auth/qr`);
+                    if (qrResult.status === 200 && qrResult.data) {
+                        const qrData = qrResult.data;
+                        // WAHA returns QR as {value: "base64..."} or {value: "data:image/png;base64,..."}
+                        let qrValue = '';
+                        if (typeof qrData === 'string') qrValue = qrData;
+                        else if (qrData.value) qrValue = qrData.value;
+                        else qrValue = JSON.stringify(qrData);
+
+                        // Save QR data to S3 as JSON (Lambda will generate presigned URL or return base64)
+                        const qrFile = path.join(DATA_DIR, 'sessions', `${session}_qr.json`);
+                        saveJSON(qrFile, { qr: qrValue, updated: new Date().toISOString() });
+                        exec(`/home/ubuntu/.local/bin/aws s3 cp ${qrFile} s3://monitor-colegio-config-669294688330/whatsapp/sessions/${session}/qr.json --region us-east-2`, (err2) => {
+                            if (!err2) console.log(`[SESSION] ${session} QR saved to S3`);
+                        });
+                    }
+                } catch (e) {
+                    console.log(`[SESSION] QR fetch error: ${e.message}`);
+                }
+            }, 2000); // Wait 2s for QR to be fully generated
+        }
         return;
     }
 

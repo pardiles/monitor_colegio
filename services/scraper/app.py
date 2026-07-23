@@ -131,6 +131,92 @@ def scrape_user(user_id, fast=False):
             except Exception as e:
                 results["sources"]["calendario"] = {"status": "error", "error": str(e)}
 
+    # Gmail
+    if not fast:
+        try:
+            from src.sources.gmail_source import GmailClient
+            gmail_cfg = user_cfg.get("gmail", {})
+            token_file = ""
+            creds_file = ""
+            # Check S3 token
+            import os as _os
+            s3_token = _os.path.join("config", "tokens", f"{user_id}_gmail_token.json")
+            if _os.path.exists(s3_token):
+                token_file = s3_token
+            elif isinstance(gmail_cfg, dict):
+                token_file = gmail_cfg.get("token_file", "")
+                creds_file = gmail_cfg.get("credentials_file", "")
+            if token_file and _os.path.exists(token_file):
+                gmail = GmailClient(creds_file, token_file)
+                gmail.authenticate()
+                emails = gmail.get_school_emails(days=7)
+                results["sources"]["gmail"] = {"status": "ok", "count": len(emails), "data": emails}
+            else:
+                results["sources"]["gmail"] = {"status": "no_token"}
+        except Exception as e:
+            results["sources"]["gmail"] = {"status": "error", "error": str(e)}
+
+    # Casino (compartido — check cache)
+    if colegio.get("casino_url") and not fast:
+        colegio_id = colegio.get("nombre", "").lower().replace(" ", "_")
+        cache_check = _storage_get(f"cache/{colegio_id}/casino/fresh?max_hours=12")
+        if cache_check and cache_check.get("fresh"):
+            cached = _storage_get(f"cache/{colegio_id}/casino")
+            if cached and cached.get("ok"):
+                results["sources"]["casino"] = {"status": "cache", "data": cached["data"]}
+        else:
+            try:
+                from src.sources.casino import fetch_casino_menu, fetch_casino_menu_today
+                casino_data = fetch_casino_menu(colegio["casino_url"])
+                menu_hoy = fetch_casino_menu_today(colegio["casino_url"])
+                results["sources"]["casino"] = {"status": "ok", "data": casino_data}
+                if menu_hoy:
+                    results["sources"]["casino_hoy"] = menu_hoy
+                _storage_put(f"cache/{colegio_id}/casino", casino_data)
+                if menu_hoy:
+                    _storage_put(f"cache/{colegio_id}/casino_hoy", menu_hoy)
+            except Exception as e:
+                results["sources"]["casino"] = {"status": "error", "error": str(e)}
+
+    # SC Info (compartido — check cache, 7 días)
+    if colegio.get("scinfo_url") and not fast:
+        colegio_id = colegio.get("nombre", "").lower().replace(" ", "_")
+        cache_check = _storage_get(f"cache/{colegio_id}/scinfo/fresh?max_hours=168")
+        if cache_check and cache_check.get("fresh"):
+            cached = _storage_get(f"cache/{colegio_id}/scinfo")
+            if cached and cached.get("ok"):
+                results["sources"]["scinfo"] = {"status": "cache", "data": cached["data"]}
+        else:
+            try:
+                from src.sources.scinfo import fetch_scinfo_latest
+                scinfo_data = fetch_scinfo_latest()
+                results["sources"]["scinfo"] = {"status": "ok", "data": scinfo_data}
+                _storage_put(f"cache/{colegio_id}/scinfo", scinfo_data)
+            except Exception as e:
+                results["sources"]["scinfo"] = {"status": "error", "error": str(e)}
+
+    # Web del colegio (noticias, talleres — compartido)
+    if not fast:
+        web_urls = {}
+        if colegio.get("noticias_url"):
+            web_urls["noticias"] = colegio["noticias_url"]
+        if colegio.get("talleres_url"):
+            web_urls["talleres"] = colegio["talleres_url"]
+        if colegio.get("extraprogramaticas_url"):
+            web_urls["talleres"] = colegio["extraprogramaticas_url"]
+        if colegio.get("deportiva_url"):
+            web_urls["deportiva"] = colegio["deportiva_url"]
+
+        if web_urls or colegio.get("web_url"):
+            try:
+                from src.sources.web_colegio import WebColegioScraper
+                scraper = WebColegioScraper(colegio.get("web_url", ""), web_urls)
+                web_data = scraper.scrape_all()
+                if web_data:
+                    results["sources"]["web_colegio"] = {"status": "ok", "data": web_data}
+            except Exception as e:
+                results["sources"]["web_colegio"] = {"status": "error", "error": str(e)}
+
     # Guardar resultados en storage
     _storage_put(f"meta/{user_id}/scraper", {})
 
