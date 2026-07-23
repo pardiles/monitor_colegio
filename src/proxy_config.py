@@ -23,6 +23,17 @@ La misma IP se usa para:
 
 import os
 
+# Cargar .env si existe (para ejecución standalone sin main.py)
+try:
+    from dotenv import load_dotenv
+    _env_path = os.path.join(os.environ.get("PROJECT_DIR", "/opt/monitor-colegio"), ".env")
+    if os.path.exists(_env_path):
+        load_dotenv(_env_path)
+    else:
+        load_dotenv()
+except ImportError:
+    pass
+
 
 def get_proxy_config():
     """Obtener configuración de proxy desde .env.
