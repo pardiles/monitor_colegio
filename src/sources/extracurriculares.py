@@ -126,34 +126,48 @@ def fetch_extracurriculares_browser(username: str, password: str, debug_dir: str
             print("   ✅ Login OK")
             page.screenshot(path=os.path.join(debug_dir, "02_schoolnet_logged.png"))
 
-            # === PASO 2: Navegar a extracurriculares (SSO redirect) ===
-            print("   🔗 Navegando a extracurriculares...")
+            # === PASO 2: Obtener URL SSO de extracurriculares ===
+            # La API interna de SchoolNet genera un token SSO temporal
+            print("   🔗 Obteniendo URL SSO...")
             
-            # Opción A: navegar directamente al link de extracurriculares
-            extras_url = f"{BASE_URL}{EXTRAS_PATH}"
-            page.goto(extras_url, wait_until="networkidle", timeout=30000)
-            time.sleep(3)
+            # Navegar a la API que devuelve la URL SSO (es una página que retorna JSON)
+            api_url = f"{BASE_URL}/webapp/es_CL/extracurricularescondor/index"
+            page.goto(api_url, wait_until="networkidle", timeout=15000)
+            time.sleep(2)
+            
+            # Leer el JSON con la URL SSO
+            sso_url = ""
+            try:
+                body_text = page.evaluate("() => document.body.innerText || document.body.textContent || ''")
+                body_text = body_text.strip()
+                if body_text.startswith("{"):
+                    data = json.loads(body_text)
+                    sso_url = data.get("url", "")
+                elif "http" in body_text:
+                    # Puede ser la URL directa
+                    url_match = re.search(r'(https?://extracurriculares[^\s"<]+)', body_text)
+                    if url_match:
+                        sso_url = url_match.group(1)
+            except Exception as e:
+                print(f"   ⚠️ Error obteniendo SSO URL: {e}")
+
+            if not sso_url:
+                print("   ❌ No se pudo obtener URL SSO de extracurriculares")
+                page.screenshot(path=os.path.join(debug_dir, "02b_no_sso_url.png"))
+                with open(os.path.join(debug_dir, "02b_api_response.txt"), "w") as f:
+                    f.write(body_text[:5000] if body_text else "EMPTY")
+                browser.close()
+                return []
+
+            print(f"   🔗 SSO URL: {sso_url[:80]}...")
+
+            # === PASO 3: Navegar al SSO URL en el MISMO browser ===
+            print("   🌐 Navegando a extracurriculares.colegium.com...")
+            page.goto(sso_url, wait_until="networkidle", timeout=60000)
+            time.sleep(5)
 
             current_url = page.url
             print(f"   📍 URL actual: {current_url[:80]}")
-
-            # Si SchoolNet hizo el SSO redirect, ahora estamos en extracurriculares.colegium.com
-            if "extracurriculares.colegium.com" in current_url:
-                print("   ✅ Redirect SSO exitoso → extracurriculares.colegium.com")
-            else:
-                # Puede que SchoolNet devolvió un JSON con la URL SSO
-                try:
-                    body_text = page.evaluate("() => document.body.innerText || ''")
-                    if body_text.startswith("{"):
-                        data = json.loads(body_text)
-                        sso_url = data.get("url", "")
-                        if sso_url:
-                            print(f"   🔗 SSO URL obtenida: {sso_url[:80]}")
-                            page.goto(sso_url, wait_until="networkidle", timeout=60000)
-                            current_url = page.url
-                            print(f"   📍 URL después de SSO: {current_url[:80]}")
-                except Exception:
-                    pass
 
             # === PASO 3: Esperar carga + Cloudflare challenge ===
             time.sleep(5)
@@ -169,56 +183,69 @@ def fetch_extracurriculares_browser(username: str, password: str, debug_dir: str
 
             page.screenshot(path=os.path.join(debug_dir, "03_extracurriculares_page.png"))
 
-            # === PASO 4: Capturar HTML ===
-            html = page.content()
-            with open(os.path.join(debug_dir, "04_extracurriculares.html"), "w", encoding="utf-8") as f:
-                f.write(html)
-            print(f"   📄 HTML guardado ({len(html)} chars)")
+            # === PASO 4: Click en cada alumno + tab Inscritas + leer texto ===
+            # La propia app React hace el POST interno (Cloudflare lo acepta)
+            # Nosotros solo leemos el resultado renderizado con innerText
+            
+            # Detectar nombres de alumnos en la página
+            page_text = page.evaluate("() => document.body.innerText")
+            alumno_names = []
+            for line in page_text.split("\n"):
+                line = line.strip()
+                if line and line == line.upper() and 5 < len(line) < 35 and " " in line:
+                    if line not in ("BLANCA FERNANDA", "FRANCO ANTONIO"):
+                        pass  # Se agrega abajo
+                    if not any(x in line for x in ["EXTRAPROGRAMÁTICA", "DEPORTE", "COLEGIO", "COLEGIUM", "COPYRIGHT"]):
+                        alumno_names.append(line)
+            # Fallback: buscar los que ya conocemos
+            if not alumno_names:
+                for name in ["BLANCA FERNANDA", "FRANCO ANTONIO"]:
+                    if name in page_text:
+                        alumno_names.append(name)
+            
+            # Quitar duplicados preservando orden
+            seen = set()
+            alumno_names = [n for n in alumno_names if not (n in seen or seen.add(n))]
+            print(f"   👦 Alumnos: {alumno_names}")
 
-            # === PASO 5: Interactuar — click en tabs, alumnos ===
-            # Esperar a que cargue el contenido dinámico (React/Angular)
-            time.sleep(3)
+            for alumno in alumno_names:
+                try:
+                    # Click en alumno (force=True para ignorar overlays)
+                    page.locator(f"text={alumno}").first.click(force=True)
+                    time.sleep(4)
+                    
+                    # Esperar a que desaparezca el overlay bloqueador
+                    try:
+                        page.wait_for_selector("#bloquearTodo-1", state="hidden", timeout=10000)
+                    except Exception:
+                        pass
+                    time.sleep(2)
+                    
+                    # Click en tab "Inscritas" (force=True)
+                    inscritas_tabs = page.locator("a, button, li, div").filter(has_text=re.compile(r"^Inscritas")).all()
+                    if inscritas_tabs:
+                        inscritas_tabs[0].click(force=True)
+                        time.sleep(5)
+                        # Esperar overlay otra vez
+                        try:
+                            page.wait_for_selector("#bloquearTodo-1", state="hidden", timeout=10000)
+                        except Exception:
+                            pass
+                        time.sleep(2)
+                    
+                    # Leer texto visible
+                    visible_text = page.evaluate("() => document.body.innerText")
+                    page.screenshot(path=os.path.join(debug_dir, f"inscritas_{alumno.split()[0].lower()}.png"))
+                    
+                    # Parsear actividades del texto
+                    parsed = _parse_inscritas_text(visible_text, alumno)
+                    actividades.extend(parsed)
+                    print(f"   ✅ {alumno}: {len(parsed)} actividades")
+                    
+                except Exception as e:
+                    print(f"   ⚠️ Error con {alumno}: {e}")
 
-            # Detectar nombres de alumnos
-            alumno_elements = page.locator("[class*='alumno'], [class*='student'], [class*='avatar'], [role='tab']").all()
-            print(f"   👦 Elementos de alumnos detectados: {len(alumno_elements)}")
-
-            # Click en "Inscritas" tab si existe
-            try:
-                tabs = page.locator("a, button, li, div[role='tab']").filter(has_text=re.compile(r"inscrit", re.IGNORECASE)).all()
-                if tabs:
-                    tabs[0].click()
-                    time.sleep(3)
-                    print("   📋 Tab 'Inscritas' clickeado")
-                    page.screenshot(path=os.path.join(debug_dir, "05_inscritas_tab.png"))
-            except Exception as e:
-                print(f"   ⚠️ Tab inscritas: {e}")
-
-            # Capturar HTML final después de interacciones
-            html_final = page.content()
-            with open(os.path.join(debug_dir, "06_final.html"), "w", encoding="utf-8") as f:
-                f.write(html_final)
-
-            # === PASO 6: Parsear actividades ===
-            # Primero intentar desde XHR responses (más confiable)
-            if xhr_responses:
-                print(f"   📡 {len(xhr_responses)} XHR responses capturados")
-                for xhr in xhr_responses:
-                    with open(os.path.join(debug_dir, f"xhr_{len(actividades)}.json"), "w", encoding="utf-8") as f:
-                        f.write(xhr["body"])
-                    parsed = _parse_xhr_response(xhr["body"])
-                    if parsed:
-                        actividades.extend(parsed)
-
-            # Si no hay XHR, parsear HTML
-            if not actividades:
-                actividades = _parse_html_actividades(html_final)
-
-            print(f"   📊 Total actividades encontradas: {len(actividades)}")
-
-            # Guardar XHR capturados para debugging
-            with open(os.path.join(debug_dir, "xhr_all.json"), "w", encoding="utf-8") as f:
-                json.dump(xhr_responses, f, indent=2, ensure_ascii=False)
+            print(f"   📊 Total actividades: {len(actividades)}")
 
         except Exception as e:
             print(f"   ❌ Error extracurriculares: {e}")
@@ -228,6 +255,120 @@ def fetch_extracurriculares_browser(username: str, password: str, debug_dir: str
                 pass
         finally:
             browser.close()
+
+    return actividades
+
+
+def _parse_inscritas_text(text: str, alumno: str) -> List[Extracurricular]:
+    """
+    Parsear texto visible de la página de inscritas.
+    
+    Formato del texto (innerText):
+        Nombre actividad\n
+        Inicio: DD/MM/YYYY\n
+        Profesor: ...\n
+        Fecha de inscripción: DD/MM/YYYY\n
+        Costo:\n
+        Sin Costo | XX.XXX $ CLP\n
+        Horario:\n
+        DIA HH:MM-HH:MM\n
+        [DIA HH:MM-HH:MM]\n  (puede haber 2 horarios)
+    """
+    actividades = []
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
+
+    # Encontrar sección "Pagadas" y "Pendientes de pago"
+    # Las actividades están después de "Pagadas" o "No registra..."
+    in_section = False
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
+
+        # Detectar inicio de actividad: línea que es un nombre
+        # (no es un keyword conocido, tiene >5 chars, no es header)
+        if (line.startswith("Inicio:") or 
+            (i + 1 < len(lines) and lines[i + 1].startswith("Inicio:"))):
+            
+            # Si la línea actual es "Inicio:", el nombre es la línea anterior
+            if line.startswith("Inicio:"):
+                nombre = lines[i - 1] if i > 0 else ""
+                inicio_line = line
+            else:
+                nombre = line
+                i += 1
+                if i >= len(lines):
+                    break
+                inicio_line = lines[i]
+
+            # Skip si el nombre es un header/keyword
+            skip_names = ["Pagadas", "Pendientes de pago", "No registra", "Agregar", 
+                         "Aceptadas", "En espera", "Cambiar", "Horario:", "Costo:",
+                         "© Copyright", "Políticas", "Condiciones", "Síguenos"]
+            if any(nombre.startswith(s) for s in skip_names) or len(nombre) < 4:
+                i += 1
+                continue
+
+            # Parsear datos de la actividad
+            fecha_inicio = ""
+            profesor = ""
+            costo = ""
+            estado = ""
+            horarios = []
+
+            # Leer líneas siguientes
+            j = i
+            while j < len(lines) and j < i + 12:
+                l = lines[j]
+                if l.startswith("Inicio:"):
+                    fecha_match = re.search(r'(\d{1,2}/\d{1,2}/\d{4})', l)
+                    if fecha_match:
+                        parts = fecha_match.group(1).split("/")
+                        fecha_inicio = f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+                elif l.startswith("Profesor:"):
+                    profesor = l.replace("Profesor:", "").strip()
+                elif l == "Sin Costo":
+                    costo = "Sin Costo"
+                    estado = "sin costo"
+                elif "$" in l and "CLP" in l:
+                    costo = l.strip()
+                    estado = "pagada"
+                elif re.match(r'^(LUN|MAR|MI[EÉ]|JUE|VIE|S[AÁ]B|DOM)\s+\d{1,2}:\d{2}', l, re.IGNORECASE):
+                    horarios.append(l.strip())
+                # Detectar inicio de siguiente actividad
+                elif j > i + 1 and not l.startswith("Fecha") and not l.startswith("Costo") and not l.startswith("Horario") and not l.startswith("Profesor") and not l.startswith("Inicio") and not l.startswith("Sin ") and "$" not in l and not re.match(r'^(LUN|MAR|MI|JUE|VIE|SA|DOM)', l, re.IGNORECASE):
+                    if len(l) > 5 and l[0].isupper():
+                        break
+                j += 1
+
+            # Crear una entrada por horario (o una sola si hay múltiples días)
+            if nombre and horarios:
+                for h in horarios:
+                    h_match = re.match(r'(LUN|MAR|MI[EÉ]|JUE|VIE|S[AÁ]B|DOM)\s+(\d{1,2}:\d{2}[-–]\d{1,2}:\d{2})', h, re.IGNORECASE)
+                    if h_match:
+                        dia = h_match.group(1).upper()
+                        horario = h_match.group(2)
+                        actividades.append(Extracurricular(
+                            nombre=nombre,
+                            dia=dia,
+                            horario=horario,
+                            fecha_inicio=fecha_inicio,
+                            profesor=profesor,
+                            costo=costo,
+                            estado=estado or "pagada",
+                            hijo=alumno,
+                        ))
+            elif nombre and fecha_inicio:
+                # Actividad sin horario visible
+                actividades.append(Extracurricular(
+                    nombre=nombre, dia="", horario="",
+                    fecha_inicio=fecha_inicio, profesor=profesor,
+                    costo=costo, estado=estado or "pagada", hijo=alumno,
+                ))
+
+            i = j
+        else:
+            i += 1
 
     return actividades
 
