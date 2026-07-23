@@ -17,6 +17,7 @@ data/whatsapp_messages.json
 data/.last_run
 data/outbox/
 data/attachments/
+data/shared/
 infra/*.pem
 infra/start_ec2.zip
 *.egg-info/

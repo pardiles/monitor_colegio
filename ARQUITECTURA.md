@@ -1,226 +1,200 @@
-# Arquitectura Final - Monitor Colegio
+# Arquitectura - Monitor Colegio
 
-## Decisiones técnicas
+## Stack actual (julio 2026)
 
-| Aspecto | Decisión |
+| Aspecto | Tecnología |
 |---|---|
-| Infra | AWS SAM (Lambda Docker + EventBridge + S3) |
-| Lenguaje | Python |
-| IA para resumen | Claude Haiku (Anthropic API) |
-| WhatsApp envío | Twilio WhatsApp API |
-| WhatsApp lectura | whatsapp-web.js (Node.js, número secundario recomendado) |
-| Login SchoolNet | Playwright (headless) → cookie → requests |
-| Storage | S3 (JSON por día) |
+| Infra | EC2 t3.small (us-east-2) + Lambda + S3 + EventBridge |
+| Lenguaje | Python (ingesta, resumen) + Node.js (wa_handler) |
+| IA resúmenes | Claude Haiku 4.5 (Anthropic API) |
+| IA bot | Haiku (fallback Gemini Flash cuando tenga billing) |
+| WhatsApp | WAHA (Docker, engine NOWEB) + wa_handler.js |
+| Scraping | Playwright (SchoolNet), requests (APIs), Scrapling (web) |
+| Storage | Archivos JSON en EC2 + S3 (configs, tokens) |
+| Landing | S3 static site + API Gateway + Lambda |
 
-## Hijos
+## Flujo principal
 
-| Nombre | Curso | Grupo WA ID | SchoolNet idx |
+```
+EventBridge (6:50 AM / 19:50 PM Chile)
+    → Arranca EC2
+    → run.sh ejecuta:
+        1. Sync configs desde S3
+        2. python3 main.py {morning|evening}
+            → Para cada usuario:
+                a) ingest_for_user() — scraping de fuentes
+                b) generate_and_send() — LLM genera resumen → outbox
+        3. EC2 se auto-apaga
+    
+wa_handler.js (servicio 24/7 en misma EC2):
+    → Recibe webhooks de WAHA (mensajes entrantes)
+    → Guarda mensajes en whatsapp_messages.json
+    → Responde preguntas con "?" usando LLM + bot_context
+    → Procesa outbox cada 3s → envía via WAHA API
+```
+
+## Estructura de archivos EC2 (/opt/monitor-colegio/)
+
+```
+/opt/monitor-colegio/
+├── main.py                    ← orquestador principal
+├── wa_handler.js              ← webhook receiver + outbox + bot
+├── send_whatsapp.js           ← escribe outbox (llamado por main.py)
+├── run.sh                     ← entry point para cron
+├── scrape_for_user.py         ← scraping on-demand (landing)
+├── .env                       ← API keys
+├── config/
+│   ├── users/                 ← {user_id}.json (sync desde S3)
+│   ├── users.json             ← legacy (merge con individuales)
+│   └── tokens/                ← Gmail tokens (sync desde S3)
+├── data/
+│   ├── shared/                ← CACHE COMPARTIDO POR COLEGIO (nuevo)
+│   │   └── {colegio_id}/
+│   │       ├── evaluaciones.json
+│   │       ├── casino.json
+│   │       ├── casino_hoy.json
+│   │       ├── scinfo.json
+│   │       ├── companeros_{curso}.json
+│   │       └── _meta.json     ← timestamps última actualización
+│   ├── outbox/                ← mensajes pendientes de envío
+│   ├── whatsapp_messages.json ← mensajes de grupos WA
+│   ├── monitor_inputs_{user}.json ← instrucciones de padres
+│   ├── bot_context_{user}.json    ← snapshot para el bot (646K)
+│   ├── calendario_{user}.json     ← eventos persistentes
+│   └── mensaje_enviar_{user}.json ← último resumen generado
+├── src/
+│   ├── sources/               ← scrapers por plataforma
+│   ├── processor/             ← summarizer.py
+│   ├── shared_cache.py        ← cache compartido por colegio
+│   └── calendar_store.py      ← calendario persistente
+└── waha_data/                 ← sesiones WAHA (Docker volume)
+```
+
+## Cache compartido por colegio
+
+Fuentes que son IGUALES para todos los usuarios del mismo colegio:
+
+| Fuente | Frecuencia real | Cache (horas) | Razón |
 |---|---|---|---|
-| Franco Antonio | 5°A | 120363022899821958@g.us | 0 |
-| Blanca Fernanda | 1°C | 120363407876876956@g.us | 1 |
+| Calendario evaluaciones | 1x/día | 12h | API pública, no cambia intra-día |
+| Casino/menú | 1x/día AM | 12h | PDF mensual, se publica la noche anterior |
+| SC Info | 1x/semana | 168h (7 días) | Se publica los lunes |
+| Noticias web | 1x/día | 12h | Cambios infrecuentes |
+| Compañeros | 1x/mes | 720h (30 días) | Solo cambia con altas/bajas |
 
-## Mensajes diarios
+Fuentes PER-USER (NO se cachean entre usuarios):
 
-### Briefing matutino (7:00 AM)
-Contenido: qué pasa HOY + qué viene en la semana
-```
-📋 Lunes 14 julio - Franco (5°A) y Blanca (1°C)
-
-🏫 HOY:
-• Franco: Matemáticas, Lenguaje, Ciencias, Ed. Física, Inglés. Sale 16:30
-• Blanca: [horario]. Sale 15:30
-• ⚠️ Prueba de Matemáticas (Franco) - Unidad 4 Fracciones
-• 🎂 Cumpleaños de [compañero/a]
-• ⚽ Extraprogramática: Fútbol (Franco, 17:00-18:00)
-
-📅 ESTA SEMANA:
-• Mar 15: Reunión apoderados 15:00 (profesora jefe Franco)
-• Mié 16: Feriado - no hay clases
-• Jue 17: Control lectura Lenguaje (Franco)
-• Vie 18: Salida anticipada 13:00 (ambos)
-
-📨 PENDIENTES:
-• Entregar autorización salida pedagógica (Franco, plazo viernes)
-```
-
-### Resumen nocturno (20:00)
-Contenido: lo nuevo que llegó durante el día
-```
-📬 Resumen del día - Lunes 14 julio
-
-📧 EMAILS NUEVOS:
-• "Información semana SC" - SubDirección Ciclo Inicial
-  → Avisa salida anticipada viernes 13:00 por jornada docente
-
-💬 GRUPO WA "5° básico A":
-• Apoderada pregunta por materiales para feria de ciencias
-• Profesora confirma cambio de horario prueba de historia
-
-💬 GRUPO WA "1C SCA":
-• Recordatorio: traer delantal para arte mañana
-
-🔔 SCHOOLNET:
-• Nueva comunicación: "SC Info 14-07-2026"
-```
-
-## Fuentes de datos
-
-### Lambda 1: Ingesta (6:00 AM y 19:00)
-Se ejecuta 2 veces al día para capturar info nueva.
-
-1. **SchoolNet** (Playwright + requests)
-   - Comunicaciones nuevas
-   - Calificaciones nuevas
-   - Anotaciones conducta
-   - Pagos/cobranza pendientes
-
-2. **Calendario evaluaciones** (API JSON pública)
-   - Evaluaciones de la semana/mes
-   - Feriados y días sin clases
-
-3. **Gmail** (Gmail API)
-   - Correos nuevos de @colegiodelsagradocorazon.cl
-
-4. **Noticias web** (Scrapling HTTP)
-   - Últimas noticias publicadas
-
-5. **WhatsApp grupos** (Baileys)
-   - Mensajes nuevos de los 3 grupos (última semana)
-
-6. **Fuentes futuras (pendientes de implementar)**
-   - **Lirmi** (https://www.lirmi.cl/cl) — Plataforma escolar usada en varios colegios de Chile. Scraping con Playwright + requests.
-   - **LaFase** (https://lafase.cl/) — Plataforma de gestión escolar. PDFs públicos (calendario, extracurriculares, deportiva, casino).
-   - **Pronote** (https://4170004n.index-education.net/pronote/) — Plataforma francesa de gestión escolar usada en liceos franceses de Chile (Alliance Française, Lycée, etc.). Evaluar librería `pronotepy`.
-   - Cada nueva fuente debe extraer: calificaciones, compañeros, asistencia, conducta, extraprogramáticas, actividades, atrasos, pagos, **casino/menú del día**, **calendario** (evaluaciones, feriados, eventos, reuniones), **noticias** (web del colegio).
-
-   **REGLA FUNDAMENTAL DE SCRAPING:**
-   Todo webscrapper desarrollado para cualquier colegio/plataforma SIEMPRE debe buscar cómo extraer los tópicos fundamentales con el mayor detalle posible. La lista de tópicos obligatorios es:
-
-   | # | Tópico | Detalle mínimo esperado |
-   |---|---|---|
-   | 1 | Calificaciones | Por asignatura, por semestre, promedios parciales y finales |
-   | 2 | Compañeros | Nombre, teléfono, dirección, padre, madre, emails, cumpleaños |
-   | 3 | Asistencia | Inasistencias con fechas + atrasos con fechas |
-   | 4 | Conducta | Anotaciones con fecha, motivo, profesor |
-   | 5 | Extraprogramáticas | Nombre, día, horario, estado (pagada/inscrita), profesor |
-   | 6 | Actividades/Eventos | Fecha, hora, descripción, lugar, curso afectado |
-   | 7 | Pagos/Cobranza | Historial pagados + avisos pendientes con vencimiento y monto |
-   | 8 | Casino/Menú | Menú del día o semanal (generalmente PDF mensual) |
-   | 9 | Calendario | Evaluaciones, feriados, reuniones, salidas anticipadas — siempre con FECHA y HORA |
-   | 10 | Noticias | Últimas publicaciones de la web del colegio |
-   | 11 | Comunicaciones | Circulares, avisos oficiales del colegio |
-   | 12 | Horarios | Ramos por día + hora de salida por curso |
-
-   **REGLA: Todo dato que tenga fecha DEBE incluir la hora si está disponible.** Pruebas, entrevistas, reuniones, actividades, eventos — siempre día + hora. Si la hora no está explícita, indicar "hora no especificada".
-
-   Si un tópico no está disponible en la plataforma, documentar por qué y buscar fuente alternativa (web del colegio, PDF, email, etc.).
-
-   **ARQUITECTURA DE EJECUCIÓN DE SCRAPERS:**
-
-   Por usuario se ejecutan TODAS sus fuentes configuradas, y CADA fuente busca TODOS los tópicos:
-
-   ```
-   Usuario → [SchoolNet] → 12 tópicos
-           → [Web colegio] → 12 tópicos  
-           → [Gmail] → 12 tópicos (extraer info relevante de emails: cumpleaños, paseos, reuniones, pagos)
-           → [WhatsApp] → 12 tópicos (extraer de mensajes: cumpleaños, paseos, horarios, actividades)
-   ```
-
-   **Ejecución:**
-   - Primera vinculación: TODAS las fuentes se ejecutan en secuencial (real-time, ~2-5 min)
-   - Ejecución diaria (cron): secuencial por usuario, fuente por fuente
-   - Futuro (escalamiento): paralelizar fuentes por usuario con asyncio/threads
-
-   **Gmail y WhatsApp como fuentes de tópicos:**
-   No solo monitorear mensajes — también EXTRAER datos relevantes:
-   - Cumpleaños mencionados en grupos → calendario
-   - "Mañana no hay clases" → calendario
-   - "Paseo el viernes al parque" → actividades
-   - "Casino: menú de la semana" (adjunto PDF) → casino
-   - "Reunión de apoderados martes 15:00" → calendario
-   - Emails de cobranza → pagos
-   - Emails con horarios/calendario adjunto → horarios, calendario
-
-   **Además de los 12 tópicos, Gmail y WA deben extraer DATOS GENERALES relevantes:**
-   - Conflictos entre apoderados o con el colegio
-   - Juntas fuera del colegio (cumpleaños de compañeros, asados, salidas grupales)
-   - Partidos y eventos deportivos
-   - Cambios de horario mencionados informalmente
-   - Actividades sociales del curso (rifas, colectas, regalos profesores)
-   - Info de transporte (furgón, cambios de ruta)
-   - Cualquier dato que un apoderado consideraría útil saber
-
-   Todo esto se agrega al **calendario persistente** como eventos, permitiendo que el resumen diario y el bot tengan visibilidad completa de lo que pasa alrededor del colegio — no solo lo oficial.
-
-   **Merge de tópicos:**
-   Si 2 fuentes encuentran el mismo tópico (ej: calendario en SchoolNet Y en web del colegio), se fusionan sin duplicar. Prioridad: plataforma académica > web del colegio > Gmail > WhatsApp.
-
-### Lambda 2: Resumen + Envío (7:00 AM y 20:00)
-1. Lee datos del día desde S3
-2. Arma contexto con info relevante (hoy + semana)
-3. Llama a Claude Haiku para generar resumen natural
-4. Envía por Twilio WhatsApp
-
-## Detalles específicos para el resumen
-
-El prompt de Claude debe incluir lógica para detectar y destacar:
-- 🎂 Cumpleaños (de los hijos o compañeros, si está en datos)
-- 📝 Evaluaciones del día o próximos 3 días
-- ⚽ Extraprogramáticas del día (horarios, qué llevar)
-- 🕐 Salidas anticipadas o cambios de horario
-- 💰 Pagos pendientes o avisos de cobranza
-- 📋 Entregas o tareas con plazo cercano
-- 🏫 Reuniones de apoderados
-- 📢 Información urgente de emails/SchoolNet/WhatsApp
-
-## Infraestructura AWS (SAM)
-
-```
-EventBridge (cron 6:00 AM) → Lambda Ingesta → S3
-EventBridge (cron 7:00 AM) → Lambda Resumen → Twilio → WhatsApp
-EventBridge (cron 19:00)   → Lambda Ingesta → S3  
-EventBridge (cron 20:00)   → Lambda Resumen → Twilio → WhatsApp
-```
-
-### Lambdas
-- **ingesta**: Docker image (Python + Playwright + Scrapling)
-- **resumen**: Lambda normal (Python, liviana, solo lee S3 + llama Claude + Twilio)
-
-### S3 Bucket
-```
-s3://monitor-colegio-data/
-  └── {fecha}/
-      ├── schoolnet_comunicaciones.json
-      ├── schoolnet_calificaciones.json
-      ├── schoolnet_asistencia.json
-      ├── calendario_evaluaciones.json
-      ├── gmail_emails.json
-      ├── noticias_web.json
-      └── whatsapp_messages.json
-```
-
-### Secrets Manager
-- SchoolNet credentials
-- Gmail token
-- Anthropic API key
-- Twilio credentials
-- WhatsApp session
-
-## Diseño para multi-usuario (futuro)
-
-El código se estructura parametrizado:
-- Config de usuario (hijos, cursos, grupos WA, credenciales) como input
-- Fácil migrar a DynamoDB + loop por usuario más adelante
-- El prompt de Claude recibe contexto genérico, no hardcodeado
-
-## Costo estimado mensual (1 usuario)
-
-| Servicio | Costo |
+| Fuente | Razón |
 |---|---|
-| Lambda ingesta (2x/día, ~60s, Docker) | ~$1 |
-| Lambda resumen (2x/día, ~10s) | ~$0.50 |
-| S3 | ~$0.10 |
-| Claude Haiku (2 calls/día) | ~$1 |
-| Twilio WhatsApp (60 msgs/mes) | ~$5 |
-| Secrets Manager | ~$0.40 |
-| **Total** | **~$8/mes** |
+| SchoolNet notas/asistencia | Cada apoderado ve solo sus hijos |
+| SchoolNet pagos | Cada familia tiene deuda distinta |
+| Gmail | Emails son privados |
+| WhatsApp grupos | Distintos grupos por familia |
+| Extraprogramáticas | Cada hijo tiene inscritas distintas |
+
+Beneficio: Si Pablo, Kevin y Ramón son del mismo colegio, el calendario y casino se scrappean 1 vez (no 3). Reduce requests a SchoolNet y evita rate limits.
+
+## WhatsApp (WAHA)
+
+```
+Docker WAHA (localhost:3000)
+  ├── Engine: NOWEB (no requiere Chrome)
+  ├── Sesión: "pablo" (1 por usuario)
+  ├── Webhook → http://localhost:8080/webhook
+  └── API: POST /api/sendText, GET /api/sessions/...
+
+wa_handler.js (localhost:8080)
+  ├── POST /webhook        ← recibe mensajes entrantes
+  ├── POST /api/session/start  ← crear sesión WAHA
+  ├── GET  /api/session/qr     ← obtener QR
+  ├── GET  /api/session/status ← estado sesión
+  ├── POST /api/session/stop   ← detener sesión
+  ├── GET  /api/groups         ← listar grupos
+  └── GET  /health             ← health check
+```
+
+## Resumen AI (Summarizer)
+
+- **AM**: Solo HOY (ramos, pruebas, extraprogramáticas, casino, pendientes)
+- **PM**: Novedades del día + preparación para MAÑANA
+- **Domingo PM**: Resumen semanal completo (lunes a viernes)
+- **Bot**: Responde preguntas con contexto completo (646K → truncado a 6K para LLM)
+
+Deduplicación: si un evento aparece en WA + calendario, se fusiona en 1 línea.
+
+---
+
+## Roadmap: Storage por usuario (próximo refactoring)
+
+Migrar de estructura plana a:
+```
+data/
+├── {user_id}/
+│   ├── bot_context.json       ← se sobreescribe cada corrida
+│   ├── calendario.json        ← eventos persistentes
+│   ├── whatsapp/
+│   │   ├── messages.json      ← últimos 7 días
+│   │   └── history/           ← archivo semanal
+│   ├── emails/latest.json     ← últimos 10 procesados
+│   ├── instrucciones.json     ← inputs padres
+│   └── meta.json              ← {last_update: {source: timestamp}}
+├── shared/{colegio_id}/       ← YA IMPLEMENTADO
+└── outbox/
+```
+
+Beneficios:
+- Privacidad: borrar carpeta = borrar todo un usuario
+- Historial: comparar semana a semana
+- Menor bot_context: solo cargar lo necesario por pregunta
+
+---
+
+## Roadmap: RAG (base vectorial)
+
+**Problema actual**: El `bot_context` es un JSON de 646K chars. Para responder una pregunta, se trunca a 6K chars. Esto significa que muchas veces el bot NO tiene la respuesta porque se truncó.
+
+**Solución: RAG con pgvector o ChromaDB**
+
+```
+Ingesta → Chunking → Embeddings → pgvector/ChromaDB
+                                        ↓
+Pregunta del usuario → Embedding → Similarity search → Top 5 chunks
+                                        ↓
+                              LLM genera respuesta con chunks relevantes
+```
+
+**Implementación propuesta (orden de esfuerzo):**
+
+1. **ChromaDB local (más fácil, piloto)**
+   - Instalar ChromaDB en la EC2 (pip install chromadb)
+   - En cada corrida de main.py: generar chunks del bot_context y actualizar la colección
+   - En wa_handler.js: cuando llega pregunta, llamar a un endpoint Python que hace similarity search
+   - Resultado: bot responde con chunks relevantes en vez de contexto truncado
+
+2. **pgvector en Aurora Serverless (producción, escalable)**
+   - Aurora PostgreSQL con extensión pgvector
+   - Chunks almacenados con embedding (OpenAI ada-002 o Gemini embeddings)
+   - Cada usuario tiene sus chunks indexados por user_id + source + date
+   - Query: `SELECT content FROM chunks WHERE user_id = $1 ORDER BY embedding <-> $2 LIMIT 5`
+   - Costo: ~$25/mes (Aurora Serverless mínimo)
+
+**Chunks sugeridos:**
+| Fuente | Granularidad del chunk |
+|---|---|
+| Calendario | 1 evento = 1 chunk |
+| Comunicaciones | 1 comunicado = 1 chunk |
+| Emails | 1 email = 1 chunk |
+| Notas | 1 asignatura/semestre = 1 chunk |
+| WA mensajes | 1 mensaje o grupo de 5 msgs = 1 chunk |
+| Casino | 1 día = 1 chunk |
+| Extraprogramáticas | 1 actividad = 1 chunk |
+
+**Métricas objetivo:**
+- Bot responde correctamente >90% de preguntas (hoy: ~60% por truncamiento)
+- Latencia: <3s desde pregunta hasta respuesta
+- Costo por pregunta: <$0.001 (embedding query + LLM con 5 chunks)
+
+**Cuándo implementar:**
+- Con <10 usuarios: bot_context truncado funciona OK (pocas preguntas/día)
+- Con >50 usuarios: RAG se vuelve necesario (contexto crece, más preguntas)
+- Trigger: si usuarios reportan "el bot no sabe" más de 2x/semana → implementar RAG

@@ -32,6 +32,12 @@ from src.sources.wa_pdf_processor import get_pdf_summary_for_context
 from src.sources.oxford import fetch_oxford_all
 from src.processor.summarizer import Summarizer
 from src.calendar_store import update_calendar_from_sources, get_upcoming_events
+from src.shared_cache import (
+    _get_colegio_id, get_evaluaciones, set_evaluaciones,
+    get_casino, set_casino, get_casino_hoy, set_casino_hoy,
+    get_scinfo, set_scinfo, get_noticias, set_noticias,
+    get_companeros, set_companeros,
+)
 # from src.messenger.whatsapp import WhatsAppSender  # Replaced by Baileys
 
 
@@ -532,7 +538,17 @@ def ingest_for_user(user_cfg: dict) -> dict:
                         except Exception:
                             pass
                         try:
-                            data[f"companeros_{nombre}"] = sn.get_companeros(i)
+                            # Compañeros: cache compartido por curso (solo cambia 1x/mes)
+                            curso = hijo.get("curso", "").replace(" ", "").lower()
+                            colegio_id = _get_colegio_id(user_cfg)
+                            cached_comp = get_companeros(colegio_id, curso) if colegio_id and curso else None
+                            if cached_comp is not None:
+                                data[f"companeros_{nombre}"] = cached_comp
+                            else:
+                                comp = sn.get_companeros(i)
+                                data[f"companeros_{nombre}"] = comp
+                                if colegio_id and curso and comp:
+                                    set_companeros(colegio_id, curso, comp)
                         except Exception:
                             pass
                     print(f"   ✅ Datos por hijo ({len(hijos)} hijos)")
@@ -560,15 +576,31 @@ def ingest_for_user(user_cfg: dict) -> dict:
                             if m:
                                 categorias.append(m.group(1))
                 if categorias:
-                    data["calendario"] = fetch_evaluaciones(categorias)
-                    print(f"   ✅ Calendario evaluaciones: {len(data['calendario'])} eventos (categorías: {categorias})")
+                    # Cache compartido: calendario es igual para todos del mismo colegio
+                    colegio_id = _get_colegio_id(user_cfg)
+                    cached = get_evaluaciones(colegio_id)
+                    if cached is not None:
+                        data["calendario"] = cached
+                        print(f"   ✅ Calendario evaluaciones: {len(cached)} eventos (cache)")
+                    else:
+                        data["calendario"] = fetch_evaluaciones(categorias)
+                        print(f"   ✅ Calendario evaluaciones: {len(data['calendario'])} eventos (categorías: {categorias})")
+                        set_evaluaciones(colegio_id, data["calendario"])
             except Exception as e:
                 print(f"   ⚠️ Calendario: {e}")
 
         # SC Info (si es Sagrado Corazón)
         if colegio.get("scinfo_url"):
             try:
-                data["scinfo"] = fetch_scinfo_latest()
+                colegio_id = _get_colegio_id(user_cfg)
+                cached = get_scinfo(colegio_id)
+                if cached is not None:
+                    data["scinfo"] = cached
+                    print(f"   ✅ SC Info (cache)")
+                else:
+                    data["scinfo"] = fetch_scinfo_latest()
+                    set_scinfo(colegio_id, data["scinfo"])
+                    print(f"   ✅ SC Info")
             except Exception as e:
                 print(f"   ⚠️ SC Info: {e}")
 
@@ -576,11 +608,23 @@ def ingest_for_user(user_cfg: dict) -> dict:
         if colegio.get("casino_url"):
             try:
                 from src.sources.casino import fetch_casino_menu, fetch_casino_menu_today
-                data["casino"] = fetch_casino_menu(colegio["casino_url"])
-                menu_hoy = fetch_casino_menu_today(colegio["casino_url"])
-                if menu_hoy:
-                    data["casino_hoy"] = menu_hoy
-                print(f"   ✅ Casino: {len(data['casino'].get('contenido', ''))} chars")
+                colegio_id = _get_colegio_id(user_cfg)
+                cached_casino = get_casino(colegio_id)
+                cached_hoy = get_casino_hoy(colegio_id)
+                if cached_casino is not None:
+                    data["casino"] = cached_casino
+                    if cached_hoy:
+                        data["casino_hoy"] = cached_hoy
+                    print(f"   ✅ Casino (cache)")
+                else:
+                    data["casino"] = fetch_casino_menu(colegio["casino_url"])
+                    menu_hoy = fetch_casino_menu_today(colegio["casino_url"])
+                    if menu_hoy:
+                        data["casino_hoy"] = menu_hoy
+                    set_casino(colegio_id, data["casino"])
+                    if menu_hoy:
+                        set_casino_hoy(colegio_id, menu_hoy)
+                    print(f"   ✅ Casino: {len(data['casino'].get('contenido', ''))} chars")
             except Exception as e:
                 print(f"   ⚠️ Casino: {e}")
 
