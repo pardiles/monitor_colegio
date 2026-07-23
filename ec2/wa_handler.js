@@ -313,8 +313,19 @@ function handleWebhook(payload) {
         const msg = payload.payload;
         if (!msg) return;
 
-        // Ignorar mensajes propios (del bot)
-        if (msg.fromMe) return;
+        // Ignorar mensajes propios EXCEPTO en grupo monitor (el apoderado pregunta desde su mismo teléfono)
+        if (msg.fromMe) {
+            // Permitir fromMe en grupo monitor para que el bot responda preguntas del apoderado
+            const users = loadUsers();
+            let isMonitorGroup = false;
+            for (const u of users) {
+                if (u.whatsapp?.grupo_monitor === chatId) {
+                    isMonitorGroup = true;
+                    break;
+                }
+            }
+            if (!isMonitorGroup) return;
+        }
 
         const chatId = msg.from;
         const body = msg.body || '';
