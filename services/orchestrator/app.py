@@ -17,6 +17,7 @@ Dependencias:
 """
 
 import os
+import sys
 import json
 import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -33,22 +34,70 @@ WA_HANDLER_URL = os.environ.get("WA_HANDLER_URL", "http://localhost:8080")
 
 
 def run_cycle(user_id, mode="morning", force=False):
-    """Ejecutar ciclo completo: scrape → resumen → envío."""
+    """Ejecutar ciclo completo: scrape → resumen → envío.
+    
+    Usa directamente las funciones de main.py (importación directa)
+    para el flujo completo, con fallback a microservicios.
+    """
     log = []
     now = datetime.now(CHILE_TZ)
 
-    # 1. Scrape
-    log.append(f"[{now.strftime('%H:%M:%S')}] Scraping {user_id}...")
+    log.append(f"[{now.strftime('%H:%M:%S')}] Ciclo {mode} para {user_id}")
+
+    # Importar funciones de main.py directamente (mismo PYTHONPATH)
+    try:
+        sys.path.insert(0, os.environ.get("PROJECT_DIR", "/opt/monitor-colegio"))
+        from main import ingest_for_user, generate_and_send, _load_users
+        
+        # Cargar config del usuario
+        users = _load_users()
+        user_cfg = next((u for u in users if u["id"] == user_id), None)
+        if not user_cfg:
+            log.append(f"  ❌ Usuario {user_id} no encontrado")
+            return {"ok": False, "log": log, "error": "User not found"}
+
+        # Ejecutar ingesta
+        log.append(f"  📡 Ingesta...")
+        data = ingest_for_user(user_cfg)
+        if not data:
+            log.append(f"  ⚠️ Sin datos")
+            return {"ok": True, "log": log, "skipped": True}
+
+        sources_found = [k for k in data.keys() if data[k]]
+        log.append(f"  ✅ Ingesta: {len(sources_found)} fuentes")
+
+        # Generar y enviar resumen
+        today = datetime.now(CHILE_TZ)
+        is_weekly = (today.weekday() == 6 and mode == "evening")
+        log.append(f"  🤖 Generando resumen ({mode}, weekly={is_weekly})...")
+        
+        message = generate_and_send(mode, data, is_weekly=is_weekly, 
+                                   user_id=user_id, user_cfg=user_cfg, force_send=force)
+        if message:
+            log.append(f"  ✅ Resumen enviado ({len(message)} chars)")
+        else:
+            log.append(f"  ⏭️ Sin resumen (día sin actividad)")
+
+        return {"ok": True, "log": log}
+
+    except ImportError as e:
+        log.append(f"  ⚠️ Import error: {e}, usando microservicios...")
+    except Exception as e:
+        log.append(f"  ❌ Error: {e}")
+        return {"ok": False, "log": log, "error": str(e)}
+
+    # Fallback: microservicios HTTP (si main.py no importable)
+    log.append(f"  [FALLBACK] Usando microservicios HTTP...")
+    
+    # 1. Scrape via scraper service
     try:
         r = requests.post(f"{SCRAPER_URL}/scrape/{user_id}", timeout=120)
         scrape_result = r.json() if r.status_code == 200 else {"error": r.text}
         log.append(f"  Scrape: {list(scrape_result.get('sources', {}).keys())}")
     except Exception as e:
         log.append(f"  Scrape ERROR: {e}")
-        scrape_result = {}
 
-    # 2. Generate summary
-    log.append(f"[{now.strftime('%H:%M:%S')}] Generating summary...")
+    # 2. Generate summary via summarizer
     is_weekly = (now.weekday() == 6 and mode == "evening")
     try:
         r = requests.post(f"{SUMMARIZER_URL}/generate", json={
@@ -66,9 +115,7 @@ def run_cycle(user_id, mode="morning", force=False):
         return {"ok": True, "log": log, "skipped": True}
 
     # 3. Send via outbox
-    log.append(f"[{now.strftime('%H:%M:%S')}] Sending...")
     try:
-        # Get user's grupo_monitor
         r = requests.get(f"{STORAGE_URL}/users/{user_id}", timeout=5)
         user_cfg = r.json().get("data", {}) if r.status_code == 200 else {}
         grupo = user_cfg.get("whatsapp", {}).get("grupo_monitor")
@@ -78,11 +125,10 @@ def run_cycle(user_id, mode="morning", force=False):
             targets = [grupo]
 
         if targets:
-            # Write outbox file directly (wa_handler picks it up)
-            import time
+            import time as _time
             outbox_dir = os.path.join(os.environ.get("DATA_DIR", "/opt/monitor-colegio/data"), "outbox")
             os.makedirs(outbox_dir, exist_ok=True)
-            outbox_file = os.path.join(outbox_dir, f"{user_id}_{int(time.time()*1000)}.json")
+            outbox_file = os.path.join(outbox_dir, f"{user_id}_{int(_time.time()*1000)}.json")
             outbox_data = {
                 "user_id": user_id,
                 "targets": targets,
@@ -93,9 +139,9 @@ def run_cycle(user_id, mode="morning", force=False):
             with open(outbox_file, "w", encoding="utf-8") as f:
                 json.dump(outbox_data, f, indent=2, ensure_ascii=False)
             os.chmod(outbox_file, 0o666)
-            log.append(f"  Sent to outbox: {targets}")
+            log.append(f"  ✅ Sent to outbox: {targets}")
         else:
-            log.append("  No targets configured, skipping")
+            log.append("  No targets configured")
     except Exception as e:
         log.append(f"  Send ERROR: {e}")
 
