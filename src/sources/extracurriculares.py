@@ -71,12 +71,22 @@ def fetch_extracurriculares_browser(username: str, password: str, debug_dir: str
                 "--disable-dev-shm-usage",
             ]
         )
-        context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
-            viewport={"width": 1366, "height": 768},
-            locale="es-CL",
-            timezone_id="America/Santiago",
-        )
+        
+        # Proxy residencial (IPRoyal) si está configurado
+        from src.proxy_config import get_playwright_proxy
+        proxy = get_playwright_proxy()
+        
+        context_opts = {
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+            "viewport": {"width": 1366, "height": 768},
+            "locale": "es-CL",
+            "timezone_id": "America/Santiago",
+        }
+        if proxy:
+            context_opts["proxy"] = proxy
+            print(f"   🌐 Usando proxy residencial: {proxy['server']}")
+        
+        context = browser.new_context(**context_opts)
         
         # Anti-detección básica
         context.add_init_script("""

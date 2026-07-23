@@ -44,7 +44,13 @@ class SchoolNetClient:
         """
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
-            context = browser.new_context()
+            # Proxy residencial si está configurado
+            try:
+                from src.proxy_config import get_playwright_proxy
+                proxy = get_playwright_proxy()
+            except Exception:
+                proxy = None
+            context = browser.new_context(proxy=proxy) if proxy else browser.new_context()
             page = context.new_page()
 
             page.goto(self.LOGIN_URL, wait_until="networkidle")
