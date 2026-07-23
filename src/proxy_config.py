@@ -1,22 +1,29 @@
 """
-Configuración de proxy residencial (IPRoyal).
+Configuración de proxy residencial — Bright Data.
 
-Cuando se contrate IPRoyal, configurar en .env:
-  PROXY_HOST=geo.iproyal.com
-  PROXY_PORT=12321
-  PROXY_USER=tu_usuario
-  PROXY_PASS=tu_password
+Bright Data Residential Proxies:
+  - Chile disponible (pay-as-you-go $8/GB)
+  - Rotating con sticky session (misma IP por 30 min)
+  - ~250KB por usuario por ciclo = centavos/mes
+
+Configurar en .env:
+  PROXY_HOST=brd.superproxy.io
+  PROXY_PORT=33335
+  PROXY_USER=brd-customer-XXXXX-zone-residential
+  PROXY_PASS=XXXXX
   PROXY_COUNTRY=cl
 
 El proxy se usa en:
-  - Playwright (SchoolNet, extracurriculares) → proxy en browser context
-  - Requests (APIs, gmail) → NO necesita proxy (son APIs legítimas)
+  - Playwright (SchoolNet login, extracurriculares) → proxy en browser context
+  - Requests (si se necesita) → proxies dict
 
-Solo scraping a sitios con Cloudflare necesita proxy residencial.
-APIs (calendario JSON, Gmail API, WAHA) NO lo necesitan.
+Solo scraping a sitios con Cloudflare/anti-bot necesita proxy.
+APIs legítimas (calendario JSON, Gmail API, WAHA) NO lo necesitan.
 """
 
 import os
+import hashlib
+import time
 
 
 def get_proxy_config():
@@ -43,14 +50,12 @@ def get_proxy_config():
 
 def get_playwright_proxy():
     """Obtener proxy formateado para Playwright browser context.
-    
-    Soporta 2 modos:
-    - Static residential: IP fija permanente
-    - Rotating residential (sticky): IP fija por 30 min (más barato, Chile disponible)
-    
-    Para IPRoyal rotating con sticky session, el username incluye parámetros:
-      usuario_country-cl_session-XXXX_lifetime-30m
-    
+
+    Bright Data format:
+      username: brd-customer-XXXXX-zone-residential-country-cl-session-XXX
+      password: XXXXX
+      server: http://brd.superproxy.io:33335
+
     Uso:
         from src.proxy_config import get_playwright_proxy
         proxy = get_playwright_proxy()
@@ -60,16 +65,13 @@ def get_playwright_proxy():
     if not cfg:
         return None
 
+    # Sticky session: misma IP por 30 min (suficiente para cualquier scrape)
+    session_id = hashlib.md5(f"{int(time.time() // 1800)}".encode()).hexdigest()[:8]
+
     username = cfg["user"]
-    # Si tiene country, agregarlo al username (formato IPRoyal rotating)
-    if cfg["country"] and "_country-" not in username:
-        username = f"{username}_country-{cfg['country']}"
-    # Agregar sticky session si no está ya (mantiene IP por 30 min)
-    if "_session-" not in username:
-        import hashlib, time
-        # Session ID basado en la hora (cambia cada 30 min)
-        session_id = hashlib.md5(f"{int(time.time() // 1800)}".encode()).hexdigest()[:8]
-        username = f"{username}_session-{session_id}_lifetime-30m"
+    if cfg["country"] and f"-country-{cfg['country']}" not in username:
+        username = f"{username}-country-{cfg['country']}"
+    username = f"{username}-session-{session_id}"
 
     return {
         "server": f"http://{cfg['host']}:{cfg['port']}",
@@ -80,7 +82,7 @@ def get_playwright_proxy():
 
 def get_requests_proxy():
     """Obtener proxy formateado para requests library.
-    
+
     Uso:
         from src.proxy_config import get_requests_proxy
         proxies = get_requests_proxy()
@@ -90,13 +92,12 @@ def get_requests_proxy():
     if not cfg:
         return None
 
+    session_id = hashlib.md5(f"{int(time.time() // 1800)}".encode()).hexdigest()[:8]
+
     username = cfg["user"]
-    if cfg["country"] and "_country-" not in username:
-        username = f"{username}_country-{cfg['country']}"
-    if "_session-" not in username:
-        import hashlib, time
-        session_id = hashlib.md5(f"{int(time.time() // 1800)}".encode()).hexdigest()[:8]
-        username = f"{username}_session-{session_id}_lifetime-30m"
+    if cfg["country"] and f"-country-{cfg['country']}" not in username:
+        username = f"{username}-country-{cfg['country']}"
+    username = f"{username}-session-{session_id}"
 
     proxy_url = f"http://{username}:{cfg['password']}@{cfg['host']}:{cfg['port']}"
     return {
