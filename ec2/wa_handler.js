@@ -663,12 +663,19 @@ async function handleCreateGroup(body) {
     // 3. Cambiar foto (generada dinámicamente con nombre colegio + apellido)
     try {
         const { execSync } = require('child_process');
-        // Generar foto con Python
+        // Generar foto con Python — leer colegio del config del usuario
         const apellido = name.replace('Monitor Colegio ', '');
-        const colegio = 'Sagrado Corazón'; // TODO: leer del config del usuario
+        let colegio = 'Monitor Colegio';
+        if (user_id) {
+            const userFile = path.join(USERS_DIR, `${user_id}.json`);
+            if (fs.existsSync(userFile)) {
+                const cfg = loadJSON(userFile, {});
+                colegio = cfg.colegio?.nombre || cfg.colegios?.[0]?.nombre || 'Monitor Colegio';
+            }
+        }
         const photoPath = `/tmp/group_photo_${user_id || 'default'}.png`;
         execSync(
-            `cd /opt/monitor-colegio && python3 -c "from src.utils.group_photo import generate_group_photo; generate_group_photo('${colegio}', '${apellido}', '${photoPath}')"`,
+            `cd /opt/monitor-colegio && python3 -c "from src.utils.group_photo import generate_group_photo; generate_group_photo('${colegio.replace(/'/g, '')}', '${apellido.replace(/'/g, '')}', '${photoPath}')"`,
             { timeout: 10000 }
         );
         if (require('fs').existsSync(photoPath)) {
@@ -677,7 +684,7 @@ async function handleCreateGroup(body) {
             await wahaRequest('PUT', `/api/${session}/groups/${groupId}/picture`, {
                 file: { mimetype: 'image/png', data: photoBase64 }
             });
-            console.log(`[GROUP] Photo set for ${groupId}`);
+            console.log(`[GROUP] Photo set for ${groupId} (${colegio} - ${apellido})`);
         }
     } catch (e) {
         console.log(`[GROUP] Photo error: ${e.message}`);
