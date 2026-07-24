@@ -58,9 +58,9 @@ def get_proxy_config():
 def get_playwright_proxy():
     """Obtener proxy formateado para Playwright browser context.
 
-    Webshare format (simple auth):
-      server: http://p.webshare.io:80
-      username: XXXXX
+    Bright Data ISP format:
+      server: http://brd.superproxy.io:33335
+      username: brd-customer-XXXXX-zone-XXXXX
       password: XXXXX
 
     Uso:
