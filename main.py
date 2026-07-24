@@ -1026,6 +1026,12 @@ def main():
             sys.exit(0)
 
         # Loop por todos los usuarios
+        # Jitter anti-detección: distribuir scraping en ventana de tiempo
+        # EC2_JITTER_OFFSET_MIN: offset base de esta EC2 (0, 10, 20...)
+        # Cada usuario tiene delay adicional basado en su posición + hash
+        ec2_offset = int(os.environ.get("EC2_JITTER_OFFSET_MIN", "0")) * 60  # segundos
+        jitter_window = int(os.environ.get("JITTER_WINDOW_SEC", "0"))  # 0 = sin jitter (dev/pocos usuarios)
+        
         for i, user_cfg in enumerate(users):
             user_id = user_cfg["id"]
             colores = ["🔵", "🟢", "🟡", "🟣", "🟠", "🔴", "⚪", "🟤"]
@@ -1033,6 +1039,16 @@ def main():
             print(f"\n{color * 25}")
             print(f"USUARIO {i+1}/{len(users)}: {user_cfg['nombre']}")
             print(f"{color * 25}")
+
+            # Jitter por usuario (solo si hay ventana configurada)
+            if jitter_window > 0 and len(users) > 1:
+                import hashlib as _hl
+                user_jitter = int(_hl.md5(f"{user_id}{today.strftime('%Y%m%d')}".encode()).hexdigest(), 16) % jitter_window
+                total_delay = ec2_offset + user_jitter
+                if total_delay > 0:
+                    print(f"   ⏳ Jitter: {total_delay}s (EC2 offset {ec2_offset}s + user {user_jitter}s)")
+                    import time as _t
+                    _t.sleep(total_delay)
 
             try:
                 data = ingest_for_user(user_cfg)
