@@ -60,10 +60,12 @@ inclusion: auto
 - Todos los servicios usan HTTP simple (http.server) — sin Flask ni deps extra
 
 ## Costos
-- Haiku: funciona bien, ~$0.001/resumen
-- Gemini Flash free tier: AGOTADO (limit: 0), no usar hasta activar billing
+- Haiku: funciona pero caro a escala (~$0.20/usuario/mes)
+- **Gemini Flash: PRIORIDAD migrar** — ~$0.03/usuario/mes (7x más barato que Haiku)
+- Para activar: habilitar billing en Google AI Studio, cambiar AI_ENGINE=gemini en .env
+- El código ya soporta ambos (summarizer + wa_handler tienen fallback)
 - Bright Data ISP: $2/IP/mes (1 IP por cada 10 usuarios)
-- EC2 t3.small: ~$36/mes (corre 24/7 para WAHA)
+- EC2 Spot t3.small: ~$12/mes
 
 ## Trabajo futuro
 - **Asignación de IP por usuario**: cuando haya >10 usuarios, implementar pool de IPs Bright Data y asignar 1 IP fija por cada 10 usuarios. La misma IP debe usarse para SchoolNet + WAHA. Guardar IP asignada en config del usuario.
