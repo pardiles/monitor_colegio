@@ -188,8 +188,8 @@ async function botRespond(chatId, question, userCfg) {
     const instruccionesFile = path.join(DATA_DIR, `monitor_inputs_${userCfg.id}.json`);
     const instrucciones = loadJSON(instruccionesFile, []);
     if (instrucciones.length > 0) {
-        const instrText = instrucciones.slice(-10).map(i => `${i.date || ''}: ${i.body}`).join('\n');
-        contextParts.unshift(`⚠️ INSTRUCCIONES DE LOS PADRES (MÁXIMA PRIORIDAD, si contradicen otra fuente GANAN):\n${instrText}`);
+        const instrText = instrucciones.slice(-5).map(i => `${i.date || ''}: ${i.body}`).join('\n');
+        contextParts.unshift(`⚠️ INSTRUCCIONES DE LOS PADRES (prioridad máxima):\n${instrText}`);
     }
         // Si RAG no encontró nada, agregar calendario también
         if (!ragUsed) {
@@ -216,7 +216,7 @@ async function botRespond(chatId, question, userCfg) {
     }
 
     const context = contextParts.join('\n\n');
-    const truncatedContext = context.substring(0, 6000);
+    const truncatedContext = context.substring(0, 8000);
 
     // Historial de conversación (últimas 5 preguntas/respuestas)
     if (!global._chatHistory) global._chatHistory = {};
