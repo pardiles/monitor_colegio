@@ -183,6 +183,14 @@ async function botRespond(chatId, question, userCfg) {
         if (botContext.casino_hoy) {
             contextParts.push(`Casino hoy: ${botContext.casino_hoy}`);
         }
+
+    // Instrucciones de los padres (MÁXIMA PRIORIDAD)
+    const instruccionesFile = path.join(DATA_DIR, `monitor_inputs_${userCfg.id}.json`);
+    const instrucciones = loadJSON(instruccionesFile, []);
+    if (instrucciones.length > 0) {
+        const instrText = instrucciones.slice(-10).map(i => `${i.date || ''}: ${i.body}`).join('\n');
+        contextParts.unshift(`⚠️ INSTRUCCIONES DE LOS PADRES (MÁXIMA PRIORIDAD, si contradicen otra fuente GANAN):\n${instrText}`);
+    }
         // Si RAG no encontró nada, agregar calendario también
         if (!ragUsed) {
             if (botContext.calendario_persistente) {
