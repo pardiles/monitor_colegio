@@ -923,7 +923,7 @@ def ingest_for_user(user_cfg: dict) -> dict:
             scinfo = data["scinfo"]
             bot_context["scinfo"] = {
                 "fecha": scinfo.get("fecha", ""),
-                "contenido": scinfo.get("contenido", "")[:1000]
+                "contenido": scinfo.get("contenido", "")[:5000]
             }
 
         # Pagos/Cobranza
