@@ -678,8 +678,16 @@ async function handleCreateGroup(body) {
             }
         }
         const photoPath = `/tmp/group_photo_${user_id || 'default'}.png`;
+        // Write params to temp JSON to avoid shell encoding issues
+        const paramsFile = `/tmp/group_photo_params_${user_id || 'default'}.json`;
+        fs.writeFileSync(paramsFile, JSON.stringify({ colegio, apellido, output: photoPath }));
         execSync(
-            `cd /opt/monitor-colegio && python3 -c "from src.utils.group_photo import generate_group_photo; generate_group_photo('${colegio.replace(/'/g, '')}', '${apellido.replace(/'/g, '')}', '${photoPath}')"`,
+            `cd /opt/monitor-colegio && python3 -c "
+import json
+params = json.load(open('${paramsFile}'))
+from src.utils.group_photo import generate_group_photo
+generate_group_photo(params['colegio'], params['apellido'], params['output'])
+"`,
             { timeout: 10000 }
         );
         if (require('fs').existsSync(photoPath)) {
