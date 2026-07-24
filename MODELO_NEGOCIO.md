@@ -24,24 +24,35 @@ El colegio (B2B). El colegio ofrece el servicio a todos sus apoderados. El que q
 | Mediano (800 alumnos) | 800 | $1.300.000 | $15.600.000 |
 | Grande (1500 alumnos) | 1500 | $2.000.000 | $24.000.000 |
 
-### Costo de infraestructura
+### Costo de infraestructura (actualizado julio 2026)
 
-| Familias registradas | Costo real/mes (CLP) |
-|---|---|
-| 50 | ~$10.000 |
-| 200 | ~$40.000 |
-| 500 | ~$100.000 |
-| 1000 | ~$200.000 |
+**Stack: EC2 Spot + Bright Data ISP Chile + Gemini Flash + ChromaDB local**
 
-Basado en $0.21 USD/usuario/mes (arquitectura escalable con Gemini Flash + proxy bulk).
+| Familias | EC2 Spot | Bright Data ($1.30-1.80/IP) | LLM Gemini | Otros | Total USD | Total CLP | Por usuario USD |
+|---|---|---|---|---|---|---|---|
+| 10 (piloto) | $12 | $2 | $0.30 | $2 | $16 | ~$15.000 | $1.63 |
+| 60 (1 colegio) | $12 | $11 | $1.80 | $3 | $29 | ~$27.000 | $0.48 |
+| 120 | $12 | $22 | $3.60 | $4 | $42 | ~$39.000 | $0.35 |
+| 300 (3 colegios) | $36 | $54 | $9 | $6 | $105 | ~$97.000 | $0.35 |
+| 1,000 (10 colegios) | $120 | $145 | $30 | $15 | $310 | ~$287.000 | $0.31 |
+| 5,000 (50 colegios) | $600 | $700 | $150 | $50 | $1,500 | ~$1.4M | $0.30 |
+| 60,000 (200 colegios) | $6,000 | $7,800 | $1,800 | $150 | $15,750 | ~$14.6M | $0.26 |
+
+**Notas:**
+- EC2 Spot t3.small: ~$12/mes (120 usuarios por instancia, WAHA 24/7)
+- Bright Data ISP: $2/IP shared (hoy), $1.80/IP (10+), $1.45/IP (100+), $1.30/IP (1000+)
+- 1 IP por cada 10 usuarios
+- LLM Gemini 2.0 Flash: ~$0.03/usuario/mes (2 resúmenes/día + bot)
+- ChromaDB local (gratis, incluido en EC2)
+- Sin Aurora hasta >120 usuarios multi-EC2 (+$30-50/mes cuando se active)
 
 ### Márgenes
 
 | Colegio | Cobro/mes | Costo/mes (60% adopción) | Margen |
 |---|---|---|---|
-| Chico (300 al, 120 familias) | $1.000.000 | ~$25.000 | 97% |
-| Mediano (800 al, 300 familias) | $1.300.000 | ~$64.000 | 95% |
-| Grande (1500 al, 600 familias) | $2.000.000 | ~$126.000 | 94% |
+| Chico (300 al, 120 familias) | $1.000.000 | ~$39.000 | 96% |
+| Mediano (800 al, 300 familias) | $1.300.000 | ~$97.000 | 93% |
+| Grande (1500 al, 600 familias) | $2.000.000 | ~$170.000 | 91% |
 
 ## Proyección primer año (solo, sin equipo, colegios medianos)
 
