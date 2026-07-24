@@ -660,16 +660,27 @@ async function handleCreateGroup(body) {
         });
     } catch {}
 
-    // 3. Cambiar foto (si hay URL o archivo)
-    if (photo_url) {
-        try {
+    // 3. Cambiar foto (generada dinámicamente con nombre colegio + apellido)
+    try {
+        const { execSync } = require('child_process');
+        // Generar foto con Python
+        const apellido = name.replace('Monitor Colegio ', '');
+        const colegio = 'Sagrado Corazón'; // TODO: leer del config del usuario
+        const photoPath = `/tmp/group_photo_${user_id || 'default'}.png`;
+        execSync(
+            `cd /opt/monitor-colegio && python3 -c "from src.utils.group_photo import generate_group_photo; generate_group_photo('${colegio}', '${apellido}', '${photoPath}')"`,
+            { timeout: 10000 }
+        );
+        if (require('fs').existsSync(photoPath)) {
+            // Upload photo to group via WAHA
+            const photoBase64 = require('fs').readFileSync(photoPath).toString('base64');
             await wahaRequest('PUT', `/api/${session}/groups/${groupId}/picture`, {
-                file: { url: photo_url }
+                file: { mimetype: 'image/png', data: photoBase64 }
             });
-            console.log(`[GROUP] Photo set`);
-        } catch (e) {
-            console.log(`[GROUP] Photo error: ${e.message}`);
+            console.log(`[GROUP] Photo set for ${groupId}`);
         }
+    } catch (e) {
+        console.log(`[GROUP] Photo error: ${e.message}`);
     }
 
     // 4. Enviar mensaje de bienvenida
