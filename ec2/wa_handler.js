@@ -155,29 +155,36 @@ async function botRespond(chatId, question, userCfg) {
         console.log(`[BOT/RAG] Exception: ${e.message}`);
     }
 
-    // Fallback: cargar bot_context completo y truncar
-    if (!ragUsed) {
-        const botContextFile = path.join(DATA_DIR, `bot_context_${userCfg.id}.json`);
-        const botContext = loadJSON(botContextFile, null);
-        const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Santiago' });
-        const dayIndex = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Santiago' })).getDay();
-        const dayName = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][dayIndex];
+    // SIEMPRE agregar contexto base (horarios, extras, fecha) — RAG complementa, no reemplaza
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Santiago' });
+    const dayIndex = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Santiago' })).getDay();
+    const dayName = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][dayIndex];
 
-        contextParts.push(`Fecha: ${dayName} ${today}`);
+    contextParts.unshift(`Fecha: ${dayName} ${today}`);
 
-        // Hijos
-        const hijos = (userCfg.hijos || []).map(h => `${h.nombre} (${h.curso})`).join(', ');
-        if (hijos) contextParts.push(`Hijos: ${hijos}`);
+    // Hijos
+    const hijos = (userCfg.hijos || []).map(h => `${h.nombre} (${h.curso})`).join(', ');
+    if (hijos) contextParts.unshift(`Hijos: ${hijos}`);
 
-        // Extraprogramáticas activas
-        const extras = (userCfg.extraprogramaticas || [])
-            .filter(e => !e.fecha_inicio || e.fecha_inicio <= today)
-            .map(e => `${e.nombre}: ${e.dia} ${e.horario} (${e.hijo}) → sale ${e.hora_salida_real || ''}`)
-            .join('\n');
-        if (extras) contextParts.push(`Extraprogramáticas activas:\n${extras}`);
+    // Extraprogramáticas activas (siempre incluir)
+    const extras = (userCfg.extraprogramaticas || [])
+        .filter(e => !e.fecha_inicio || e.fecha_inicio <= today)
+        .map(e => `${e.nombre}: ${e.dia} ${e.horario} (${e.hijo}) → sale ${e.hora_salida_real || ''}`)
+        .join('\n');
+    if (extras) contextParts.push(`Extraprogramáticas activas:\n${extras}`);
 
-        // Bot context completo (calendario, comunicaciones, etc.)
-        if (botContext) {
+    // Horarios (siempre incluir del bot_context)
+    const botContextFile = path.join(DATA_DIR, `bot_context_${userCfg.id}.json`);
+    const botContext = loadJSON(botContextFile, null);
+    if (botContext) {
+        if (botContext.horarios) {
+            contextParts.push(`Horarios:\n${JSON.stringify(botContext.horarios).substring(0, 2000)}`);
+        }
+        if (botContext.casino_hoy) {
+            contextParts.push(`Casino hoy: ${botContext.casino_hoy}`);
+        }
+        // Si RAG no encontró nada, agregar calendario también
+        if (!ragUsed) {
             if (botContext.calendario_persistente) {
                 const upcoming = botContext.calendario_persistente
                     .filter(e => e.fecha >= today)
@@ -186,20 +193,8 @@ async function botRespond(chatId, question, userCfg) {
                     .join('\n');
                 if (upcoming) contextParts.push(`Calendario próximo:\n${upcoming}`);
             }
-            if (botContext.horarios) {
-                contextParts.push(`Horarios:\n${JSON.stringify(botContext.horarios).substring(0, 2000)}`);
-            }
             if (botContext.comunicaciones) {
-                contextParts.push(`Comunicaciones recientes:\n${JSON.stringify(botContext.comunicaciones).substring(0, 1500)}`);
-            }
-            if (botContext.emails) {
-                const emails = botContext.emails.slice(0, 5)
-                    .map(e => `${e.date || ''}: ${e.subject} — ${(e.body || '').substring(0, 150)}`)
-                    .join('\n');
-                if (emails) contextParts.push(`Emails recientes:\n${emails}`);
-            }
-            if (botContext.casino_hoy) {
-                contextParts.push(`Casino hoy: ${botContext.casino_hoy}`);
+                contextParts.push(`Comunicaciones:\n${JSON.stringify(botContext.comunicaciones).substring(0, 1500)}`);
             }
             if (botContext.pagos) {
                 contextParts.push(`Pagos: ${JSON.stringify(botContext.pagos).substring(0, 500)}`);
@@ -208,11 +203,9 @@ async function botRespond(chatId, question, userCfg) {
                 const nombre = hijo.nombre.toLowerCase();
                 const notas = botContext[`calificaciones_${nombre}`];
                 if (notas) contextParts.push(`Notas ${hijo.nombre}: ${JSON.stringify(notas).substring(0, 800)}`);
-                const asist = botContext[`asistencia_${nombre}`];
-                if (asist) contextParts.push(`Asistencia ${hijo.nombre}: ${JSON.stringify(asist).substring(0, 400)}`);
             }
         }
-    } // end !ragUsed
+    }
 
     const context = contextParts.join('\n\n');
     const truncatedContext = context.substring(0, 6000);
