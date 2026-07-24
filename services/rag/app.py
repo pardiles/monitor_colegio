@@ -118,6 +118,35 @@ def _chunk_context(bot_context):
             text = f"WA grupo {grupo}: " + " | ".join([f"{m.get('from','')}: {m.get('body','')}" for m in msgs[:5]])
             chunks.append({"id": f"wa_{grupo}", "text": text[:500], "source": "whatsapp"})
 
+    # Compañeros (por hijo): 1 compañero = 1 chunk
+    companeros = bot_context.get("companeros", {})
+    for hijo, lista in companeros.items():
+        if isinstance(lista, list):
+            for comp in lista:
+                nombre = comp.get("nombre", "")
+                cumple = comp.get("cumple", "")
+                telefono = comp.get("telefono", "")
+                padre = comp.get("padre", "")
+                madre = comp.get("madre", "")
+                curso = comp.get("curso", "")
+                parts = [f"Compañero de {hijo}: {nombre}"]
+                if cumple:
+                    parts.append(f"cumpleaños: {cumple}")
+                if curso:
+                    parts.append(f"curso: {curso}")
+                if telefono:
+                    parts.append(f"tel: {telefono}")
+                if padre:
+                    parts.append(f"padre: {padre}")
+                if madre:
+                    parts.append(f"madre: {madre}")
+                if comp.get("celular_padre"):
+                    parts.append(f"cel padre: {comp['celular_padre']}")
+                if comp.get("celular_madre"):
+                    parts.append(f"cel madre: {comp['celular_madre']}")
+                text = " | ".join(parts)
+                chunks.append({"id": f"comp_{hijo}_{len(chunks)}", "text": text, "source": "companeros"})
+
     return chunks
 
 
