@@ -65,6 +65,11 @@ inclusion: auto
 - Bright Data ISP: $2/IP/mes (1 IP por cada 10 usuarios)
 - EC2 t3.small: ~$36/mes (corre 24/7 para WAHA)
 
+## Trabajo futuro
+- **Asignación de IP por usuario**: cuando haya >10 usuarios, implementar pool de IPs Bright Data y asignar 1 IP fija por cada 10 usuarios. La misma IP debe usarse para SchoolNet + WAHA. Guardar IP asignada en config del usuario.
+- **Scraper extraprogramáticas**: Cloudflare bloquea POSTs aún con IP residencial. Seguir investigando: probar con IP dedicada (no shared), o esperar actualización de WAHA/Cloudflare. Mientras tanto, hardcodear en config.
+- **Crear grupo monitor automático**: ya implementado en wa_handler (`/api/group/create`). Conectar al flujo de welcome en Lambda.
+
 ## Reglas de negocio
 - Resumen AM = solo HOY
 - Resumen PM = solo MAÑANA

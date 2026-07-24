@@ -597,6 +597,88 @@ async function handleListGroups(query) {
     }
 }
 
+// --- Create monitor group + welcome message ---
+async function handleCreateGroup(body) {
+    const { session, name, participants, user_id, photo_url } = body;
+    if (!session || !name || !participants || !participants.length) {
+        return { ok: false, error: 'session, name, participants requeridos' };
+    }
+
+    // 1. Crear grupo
+    console.log(`[GROUP] Creating "${name}" with ${participants.length} participants`);
+    let groupId = '';
+    try {
+        const result = await wahaRequest('POST', `/api/${session}/groups`, {
+            name: name,
+            participants: participants.map(p => ({ id: p })),
+        });
+        if (result.status === 201 || result.status === 200) {
+            groupId = result.data?.id || result.data?.gid || '';
+            console.log(`[GROUP] Created: ${groupId}`);
+        } else {
+            console.log(`[GROUP] Create failed: ${JSON.stringify(result.data).substring(0, 200)}`);
+            return { ok: false, error: 'Group creation failed', details: result.data };
+        }
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+
+    if (!groupId) return { ok: false, error: 'No group ID returned' };
+
+    // 2. Cambiar descripción
+    try {
+        await wahaRequest('PUT', `/api/${session}/groups/${groupId}/description`, {
+            description: '📚 Monitor Colegio — Resúmenes diarios + asistente 24/7\n🤖 Pregúntame con "?"\n📝 Escribe instrucciones y las anoto'
+        });
+    } catch {}
+
+    // 3. Cambiar foto (si hay URL o archivo)
+    if (photo_url) {
+        try {
+            await wahaRequest('PUT', `/api/${session}/groups/${groupId}/picture`, {
+                file: { url: photo_url }
+            });
+            console.log(`[GROUP] Photo set`);
+        } catch (e) {
+            console.log(`[GROUP] Photo error: ${e.message}`);
+        }
+    }
+
+    // 4. Enviar mensaje de bienvenida
+    const welcomeMsg = `🎉 *¡Bienvenido a Monitor Colegio!*
+
+📋 Resúmenes diarios: 7:00 AM + 20:00 PM
+🤖 Pregúntame lo que quieras con "?"
+📝 Escribe instrucciones y las anoto
+📌 Fija este grupo arriba para no perderte nada
+
+_Tu primer resumen llegará en la próxima corrida (AM o PM)._`;
+
+    try {
+        await sendMessage(groupId, welcomeMsg, session);
+        console.log(`[GROUP] Welcome sent to ${groupId}`);
+    } catch {}
+
+    // 5. Guardar grupo_monitor en config del usuario
+    if (user_id) {
+        const userFile = path.join(USERS_DIR, `${user_id}.json`);
+        if (fs.existsSync(userFile)) {
+            try {
+                const cfg = loadJSON(userFile, {});
+                if (!cfg.whatsapp) cfg.whatsapp = {};
+                cfg.whatsapp.grupo_monitor = groupId;
+                saveJSON(userFile, cfg);
+                console.log(`[GROUP] Updated config: grupo_monitor = ${groupId}`);
+                // Sync to S3
+                const { exec } = require('child_process');
+                exec(`/home/ubuntu/.local/bin/aws s3 cp ${userFile} s3://monitor-colegio-config-669294688330/config/users/${user_id}.json --region us-east-2`);
+            } catch {}
+        }
+    }
+
+    return { ok: true, groupId, name };
+}
+
 // --- HTTP Server ---
 const server = http.createServer((req, res) => {
     // Parse URL
@@ -639,6 +721,11 @@ const server = http.createServer((req, res) => {
             }
             else if (pathname === '/api/session/stop') {
                 const result = await handleSessionStop(parsed);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(result));
+            }
+            else if (pathname === '/api/group/create') {
+                const result = await handleCreateGroup(parsed);
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify(result));
             }
