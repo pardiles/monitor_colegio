@@ -324,26 +324,54 @@ function handleWebhook(payload) {
         if (status === 'SCAN_QR_CODE') {
             setTimeout(async () => {
                 try {
-                    const qrResult = await wahaRequest('GET', `/api/${session}/auth/qr`);
-                    if (qrResult.status === 200 && qrResult.data) {
-                        const qrData = qrResult.data;
-                        // WAHA returns QR as {value: "base64..."} or {value: "data:image/png;base64,..."}
-                        let qrValue = '';
-                        if (typeof qrData === 'string') qrValue = qrData;
-                        else if (qrData.value) qrValue = qrData.value;
-                        else qrValue = JSON.stringify(qrData);
+                    // WAHA NOWEB returns QR as PNG binary
+                    const qrResult = await new Promise((resolve, reject) => {
+                        const req = http.request({
+                            hostname: 'localhost', port: 3000,
+                            path: `/api/${session}/auth/qr`,
+                            method: 'GET',
+                            headers: { 'X-Api-Key': WAHA_API_KEY },
+                        }, (res) => {
+                            const chunks = [];
+                            res.on('data', c => chunks.push(c));
+                            res.on('end', () => {
+                                const buf = Buffer.concat(chunks);
+                                const contentType = res.headers['content-type'] || '';
+                                resolve({ status: res.statusCode, contentType, buffer: buf });
+                            });
+                        });
+                        req.on('error', reject);
+                        req.end();
+                    });
 
-                        // Save QR data to S3 as JSON (Lambda will generate presigned URL or return base64)
+                    if (qrResult.status === 200 && qrResult.buffer.length > 100) {
+                        let qrValue = '';
+                        if (qrResult.contentType.includes('image') || qrResult.buffer[0] === 0x89) {
+                            // PNG binary → base64 data URL
+                            qrValue = `data:image/png;base64,${qrResult.buffer.toString('base64')}`;
+                        } else {
+                            // JSON or text
+                            const text = qrResult.buffer.toString('utf-8');
+                            try {
+                                const json = JSON.parse(text);
+                                qrValue = json.value || json.qr || text;
+                            } catch {
+                                qrValue = text;
+                            }
+                        }
+
+                        // Save QR to file and S3
                         const qrFile = path.join(DATA_DIR, 'sessions', `${session}_qr.json`);
                         saveJSON(qrFile, { qr: qrValue, updated: new Date().toISOString() });
+                        const { exec } = require('child_process');
                         exec(`/home/ubuntu/.local/bin/aws s3 cp ${qrFile} s3://monitor-colegio-config-669294688330/whatsapp/sessions/${session}/qr.json --region us-east-2`, (err2) => {
-                            if (!err2) console.log(`[SESSION] ${session} QR saved to S3`);
+                            if (!err2) console.log(`[SESSION] ${session} QR saved to S3 (${qrValue.length} chars)`);
                         });
                     }
                 } catch (e) {
                     console.log(`[SESSION] QR fetch error: ${e.message}`);
                 }
-            }, 2000); // Wait 2s for QR to be fully generated
+            }, 3000); // Wait 3s for QR to be fully generated
         }
         return;
     }
