@@ -781,12 +781,27 @@ def ingest_for_user(user_cfg: dict) -> dict:
     # Guardar contexto enriquecido para el bot conversacional
     try:
         bot_context = {}
-        # Compañeros (por hijo)
+        # Compañeros (por hijo) — solo los del MISMO CURSO del hijo
+        hijos_cfg = user_cfg.get("hijos", [])
         for key in data:
             if key.startswith("companeros_"):
                 companeros_data = data[key]
                 if isinstance(companeros_data, dict) and companeros_data.get("companeros"):
-                    bot_context.setdefault("companeros", {})[key.replace("companeros_", "")] = [
+                    hijo_name = key.replace("companeros_", "")
+                    # Obtener curso del hijo desde config
+                    hijo_curso = ""
+                    for h in hijos_cfg:
+                        if h.get("nombre", "").lower() == hijo_name.lower() or hijo_name.lower() in h.get("nombre", "").lower():
+                            hijo_curso = h.get("curso", "").replace(" ", "").replace("-", "").lower()
+                            break
+                    # Filtrar: solo compañeros del mismo curso
+                    all_comps = companeros_data["companeros"]
+                    if hijo_curso:
+                        filtered = [c for c in all_comps if c.get("curso", "").replace(" ", "").replace("-", "").lower() == hijo_curso]
+                    else:
+                        filtered = all_comps  # Sin filtro si no sabemos el curso
+                    
+                    bot_context.setdefault("companeros", {})[hijo_name] = [
                         {
                             "nombre": c.get("nombre", ""),
                             "cumple": c.get("fnacimiento", c.get("cumpleanos", c.get("cumple", ""))),
@@ -800,7 +815,7 @@ def ingest_for_user(user_cfg: dict) -> dict:
                             "email_madre": c.get("emailmadre", ""),
                             "curso": c.get("curso", ""),
                         }
-                        for c in companeros_data["companeros"][:40]
+                        for c in filtered
                     ]
         # Calificaciones (por hijo)
         for key in data:
