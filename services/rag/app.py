@@ -106,11 +106,38 @@ def _chunk_context(bot_context):
         text = f"Horarios: {json.dumps(horarios, ensure_ascii=False)[:500]}"
         chunks.append({"id": "horarios", "text": text, "source": "horarios"})
 
-    # SC Info
+    # SC Info — dividir en párrafos/secciones (no 1 chunk truncado)
     scinfo = bot_context.get("scinfo", {})
     if scinfo:
-        text = f"SC Info {scinfo.get('fecha', '')}: {scinfo.get('contenido', '')[:500]}"
-        chunks.append({"id": "scinfo", "text": text, "source": "scinfo"})
+        contenido = scinfo.get("contenido", "")
+        fecha_sc = scinfo.get("fecha", "")
+        if contenido:
+            # Dividir por párrafos o secciones (doble salto de línea)
+            secciones = [s.strip() for s in contenido.split("\n\n") if s.strip() and len(s.strip()) > 20]
+            if not secciones:
+                # Fallback: dividir por líneas largas
+                secciones = [s.strip() for s in contenido.split("\n") if s.strip() and len(s.strip()) > 30]
+            for i, seccion in enumerate(secciones[:15]):  # máximo 15 secciones
+                text = f"SC Info {fecha_sc}: {seccion[:400]}"
+                chunks.append({"id": f"scinfo_{i}", "text": text, "source": "scinfo"})
+
+    # Calendario web (pruebas, eventos de la página del colegio)
+    cal_web = bot_context.get("calendario_web", "")
+    if cal_web and isinstance(cal_web, str) and len(cal_web) > 50:
+        # Dividir en líneas/eventos
+        lineas = [l.strip() for l in cal_web.split("\n") if l.strip() and len(l.strip()) > 15]
+        for i, linea in enumerate(lineas[:20]):
+            chunks.append({"id": f"calweb_{i}", "text": f"Calendario web: {linea[:300]}", "source": "calendario_web"})
+
+    # Noticias del colegio
+    noticias = bot_context.get("noticias_colegio", [])
+    if isinstance(noticias, list):
+        for i, noticia in enumerate(noticias[:10]):
+            if isinstance(noticia, dict):
+                text = f"Noticia colegio: {noticia.get('titulo', '')} — {noticia.get('contenido', noticia.get('resumen', ''))[:300]}"
+            else:
+                text = f"Noticia colegio: {str(noticia)[:300]}"
+            chunks.append({"id": f"noticia_{i}", "text": text, "source": "noticias"})
 
     # WhatsApp reciente
     for grupo, msgs in bot_context.get("whatsapp_reciente", {}).items():
