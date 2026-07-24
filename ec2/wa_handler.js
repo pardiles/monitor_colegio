@@ -133,14 +133,14 @@ async function botRespond(chatId, question, userCfg) {
             const req = http.request({
                 hostname: 'localhost', port: 8086,
                 path: '/query', method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(ragBody) },
             }, (res) => {
                 let data = '';
                 res.on('data', c => data += c);
                 res.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve(null); } });
             });
-            req.on('error', () => resolve(null));
-            req.setTimeout(3000, () => { req.destroy(); resolve(null); });
+            req.on('error', (e) => { console.log(`[BOT/RAG] Connection error: ${e.message}`); resolve(null); });
+            req.setTimeout(5000, () => { console.log(`[BOT/RAG] Timeout`); req.destroy(); resolve(null); });
             req.write(ragBody);
             req.end();
         });
@@ -148,8 +148,12 @@ async function botRespond(chatId, question, userCfg) {
             contextParts = ragResp.chunks;
             ragUsed = true;
             console.log(`[BOT/RAG] ${userCfg.id}: ${ragResp.chunks.length} chunks found`);
+        } else {
+            console.log(`[BOT/RAG] No chunks: ${JSON.stringify(ragResp).substring(0, 100)}`);
         }
-    } catch {}
+    } catch (e) {
+        console.log(`[BOT/RAG] Exception: ${e.message}`);
+    }
 
     // Fallback: cargar bot_context completo y truncar
     if (!ragUsed) {

@@ -119,10 +119,22 @@ def _chunk_context(bot_context):
             chunks.append({"id": f"wa_{grupo}", "text": text[:500], "source": "whatsapp"})
 
     # Compañeros (por hijo): 1 compañero = 1 chunk
+    # Solo incluir compañeros del MISMO CURSO del hijo (SchoolNet trae otros por bug)
     companeros = bot_context.get("companeros", {})
+    # Obtener cursos de los hijos desde el contexto
+    hijos_cursos = {}
+    for prof in bot_context.get("profesores", []):
+        hijos_cursos[prof.get("hijo", "").lower()] = prof.get("curso", "").lower().replace(" ", "").replace("-", "")
+
     for hijo, lista in companeros.items():
         if isinstance(lista, list):
+            hijo_curso = hijos_cursos.get(hijo.lower(), "")
             for comp in lista:
+                # Filtrar: solo compañeros del mismo curso
+                comp_curso = comp.get("curso", "").lower().replace(" ", "").replace("-", "")
+                if hijo_curso and comp_curso and comp_curso != hijo_curso:
+                    continue  # Skip compañeros de otro curso (bug SchoolNet)
+
                 nombre = comp.get("nombre", "")
                 cumple = comp.get("cumple", "")
                 telefono = comp.get("telefono", "")
