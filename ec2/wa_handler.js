@@ -156,7 +156,8 @@ async function botRespond(chatId, question, userCfg) {
         const botContextFile = path.join(DATA_DIR, `bot_context_${userCfg.id}.json`);
         const botContext = loadJSON(botContextFile, null);
         const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Santiago' });
-        const dayName = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][new Date().getDay()];
+        const dayIndex = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Santiago' })).getDay();
+        const dayName = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][dayIndex];
 
         contextParts.push(`Fecha: ${dayName} ${today}`);
 
