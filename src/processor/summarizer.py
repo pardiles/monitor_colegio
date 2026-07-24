@@ -279,6 +279,9 @@ class Summarizer:
         """Genera el briefing matutino."""
         today = datetime.now(CHILE_TZ)
 
+        # Enriquecer datos con RAG (chunks relevantes para hoy)
+        data = self._enrich_with_rag(data, mode="morning", is_weekly=is_weekly)
+
         context_note = ""
         if is_weekly:
             context_note = "\nIMPORTANTE: Es el RESUMEN SEMANAL (domingo PM). Incluye el panorama completo de TODA la semana que viene."
@@ -299,6 +302,9 @@ Genera el briefing matutino."""
         """Genera el resumen nocturno."""
         today = datetime.now(CHILE_TZ)
 
+        # Enriquecer datos con RAG (chunks relevantes para mañana)
+        data = self._enrich_with_rag(data, mode="evening", is_weekly=is_weekly)
+
         context_note = ""
         if is_weekly:
             context_note = "\nIMPORTANTE: Es el RESUMEN SEMANAL (domingo PM). Incluye el panorama completo de TODA la semana que viene día por día."
@@ -314,6 +320,79 @@ Genera el resumen nocturno."""
 
         system_prompt = build_evening_prompt(self.context)
         return self._call_llm(system_prompt, user_content, max_tokens=2000 if is_weekly else 1500)
+
+    def _enrich_with_rag(self, data: Dict[str, Any], mode: str = "morning", is_weekly: bool = False) -> Dict[str, Any]:
+        """Enriquecer datos con chunks relevantes del RAG.
+        
+        Hace múltiples queries focalizadas para obtener contexto adicional
+        que el _format_data truncaría (ej: cumpleaños, compañeros, eventos).
+        """
+        import os
+        try:
+            import requests
+            rag_url = os.environ.get("RAG_URL", "http://localhost:8086")
+            user_id = data.get("_user_id", "")
+            if not user_id:
+                # Intentar obtener de los keys del data
+                for key in data:
+                    if key.startswith("calificaciones_"):
+                        pass
+                return data
+
+            today = datetime.now(CHILE_TZ)
+            today_str = today.strftime("%Y-%m-%d")
+            day_name = DIAS_ES[today.weekday()]
+
+            # Queries RAG focalizadas según el modo
+            queries = []
+            if mode == "morning":
+                queries = [
+                    f"eventos {day_name} {today_str} hoy",
+                    f"cumpleaños {today_str}",
+                    "actividades extraprogramáticas horario salida",
+                ]
+            elif mode == "evening":
+                tomorrow = today.weekday() + 1
+                tomorrow_name = DIAS_ES.get(tomorrow % 7, "")
+                queries = [
+                    f"eventos mañana {tomorrow_name}",
+                    f"cumpleaños próximos días",
+                    "pendientes plazos entregas",
+                ]
+            if is_weekly:
+                queries.extend([
+                    "eventos semana pruebas evaluaciones",
+                    "reuniones entrevistas",
+                    "cumpleaños semana",
+                ])
+
+            # Ejecutar queries y recolectar chunks únicos
+            all_chunks = []
+            seen = set()
+            for query in queries:
+                try:
+                    r = requests.post(f"{rag_url}/query", json={
+                        "user_id": user_id, "question": query, "n_results": 5
+                    }, timeout=3)
+                    if r.status_code == 200:
+                        chunks = r.json().get("chunks", [])
+                        for chunk in chunks:
+                            if chunk not in seen:
+                                seen.add(chunk)
+                                all_chunks.append(chunk)
+                except Exception:
+                    pass
+
+            # Agregar chunks RAG como sección adicional en data
+            if all_chunks:
+                data["_rag_context"] = all_chunks
+
+        except ImportError:
+            pass
+        except Exception:
+            pass
+
+        return data
 
     def _call_llm(self, system_prompt: str, user_content: str, max_tokens: int = 1500) -> str:
         """Llama al LLM seleccionado (Haiku o Gemini)."""
@@ -383,5 +462,11 @@ Genera el resumen nocturno."""
                 limit = 4000 if "whatsapp" in key else 2000
                 value_str = json.dumps(value, indent=2, ensure_ascii=False)[:limit]
                 sections.append(f"### {key}\n{value_str}")
+
+        # RAG: chunks adicionales relevantes (cumpleaños, compañeros, eventos)
+        rag_chunks = data.get("_rag_context", [])
+        if rag_chunks:
+            rag_text = "\n".join([f"• {chunk}" for chunk in rag_chunks[:15]])
+            sections.append(f"### 🔍 CONTEXTO ADICIONAL (RAG)\n{rag_text}")
 
         return "\n\n".join(sections)

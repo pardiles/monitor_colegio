@@ -346,6 +346,9 @@ def generate_and_send(mode: str, data: dict, is_weekly: bool = False,
     print(f"\n🤖 Generando resumen con {engine}...")
     summarizer = Summarizer(api_key, user_cfg=user_cfg, engine=engine)
     
+    # Agregar user_id al data para que RAG pueda hacer queries
+    data["_user_id"] = user_id
+    
     if mode == "morning":
         message = summarizer.generate_morning_briefing(data, is_weekly=is_weekly)
     else:
