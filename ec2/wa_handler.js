@@ -230,6 +230,7 @@ async function botRespond(chatId, question, userCfg) {
 Responde breve (1-4 líneas máximo), amigable, en español chileno.
 Si no tienes la info exacta, di "No tengo esa info, confirma con el colegio 📞".
 NUNCA inventes información que no esté en el contexto.
+Usa los nombres EXACTAMENTE como aparecen en el contexto (no agregar tildes ni modificar).
 
 Contexto:
 ${truncatedContext}${historyText}`;
