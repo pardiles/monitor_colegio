@@ -210,13 +210,21 @@ async function botRespond(chatId, question, userCfg) {
     const context = contextParts.join('\n\n');
     const truncatedContext = context.substring(0, 6000);
 
+    // Historial de conversación (últimas 5 preguntas/respuestas)
+    if (!global._chatHistory) global._chatHistory = {};
+    const history = global._chatHistory[userCfg.id] || [];
+    let historyText = '';
+    if (history.length > 0) {
+        historyText = '\n\nConversación reciente:\n' + history.map(h => `P: ${h.q}\nR: ${h.a}`).join('\n');
+    }
+
     const systemPrompt = `Eres un asistente de WhatsApp que responde preguntas de un apoderado sobre el colegio de sus hijos.
 Responde breve (1-4 líneas máximo), amigable, en español chileno.
 Si no tienes la info exacta, di "No tengo esa info, confirma con el colegio 📞".
 NUNCA inventes información que no esté en el contexto.
 
 Contexto:
-${truncatedContext}`;
+${truncatedContext}${historyText}`;
 
     // Llamar LLM
     const useGemini = AI_ENGINE === 'gemini' && GEMINI_API_KEY;
@@ -226,6 +234,10 @@ ${truncatedContext}`;
         if (answer) {
             await sendMessage(chatId, `🤖 ${answer}`, session);
             console.log(`[BOT] ${userCfg.id}: ${answer.substring(0, 60)}`);
+            // Guardar en historial (máximo 5)
+            history.push({ q: question.substring(0, 100), a: answer.substring(0, 150) });
+            if (history.length > 5) history.shift();
+            global._chatHistory[userCfg.id] = history;
         }
     } catch (e) {
         console.log(`[BOT] Error: ${e.message}`);
